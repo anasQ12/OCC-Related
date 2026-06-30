@@ -1,0 +1,829 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>IY Flights · Yemenia Schedule</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
+  <style>
+    :root {
+      --navy:#0B1F3A; --sky:#1E6FA8; --ice:#D6EAF8;
+      --green:#1A7A4A; --red:#C0392B; --amber:#B7770D; --amber-bg:#FEF3CD;
+      --white:#FFFFFF; --off:#F4F7FA; --border:#C8D8E8; --text:#1A2A3A; --muted:#5A7090;
+    }
+    *,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
+    body{font-family:'Segoe UI',Arial,sans-serif;background:var(--off);color:var(--text);min-height:100vh;}
+
+    nav{background:var(--navy);padding:0 40px;display:flex;gap:24px;align-items:center;height:56px;}
+    nav a{color:rgba(255,255,255,.65);text-decoration:none;font-size:.83rem;font-weight:600;padding:5px 0;border-bottom:2px solid transparent;}
+    nav a:hover{color:white;}
+    nav a.active{color:white;border-bottom-color:var(--sky);}
+    .nav-logo{color:white;font-size:.95rem;font-weight:800;margin-right:auto;letter-spacing:.5px;}
+
+    header{background:linear-gradient(135deg,var(--navy) 0%,#1A4A7A 100%);padding:26px 40px 22px;box-shadow:0 3px 12px rgba(0,0,0,.22);}
+    header h1{color:var(--white);font-size:1.45rem;font-weight:700;}
+    header p{color:var(--ice);font-size:.83rem;margin-top:3px;}
+
+    main{max-width:1150px;margin:0 auto;padding:36px 24px 70px;}
+
+    .section-title{font-size:.95rem;font-weight:700;color:var(--navy);margin:32px 0 14px;display:flex;align-items:center;gap:10px;}
+    .section-title::after{content:'';flex:1;height:1px;background:var(--border);}
+
+    /* ── Mode tabs ── */
+    .mode-tabs{display:flex;gap:0;margin-bottom:-1px;}
+    .mode-tab{padding:10px 22px;font-size:.85rem;font-weight:600;border:1px solid var(--border);border-bottom:none;border-radius:8px 8px 0 0;cursor:pointer;background:var(--off);color:var(--muted);transition:background .15s;}
+    .mode-tab.active{background:var(--white);color:var(--sky);border-bottom:1px solid var(--white);}
+    .mode-pane{display:none;background:var(--white);border:1px solid var(--border);border-radius:0 10px 10px 10px;padding:24px;}
+    .mode-pane.active{display:block;}
+
+    /* ── Manual entry table ── */
+    .entry-table{width:100%;border-collapse:collapse;margin-bottom:16px;}
+    .entry-table th{background:#1E6FA8;color:white;font-size:.72rem;text-transform:uppercase;letter-spacing:.5px;padding:9px 8px;text-align:left;white-space:nowrap;}
+    .entry-table td{padding:6px 6px;border-bottom:1px solid #EEF3F8;}
+    .entry-table tr:nth-child(even) td{background:#F8FBFF;}
+    .entry-table input,.entry-table select{
+      width:100%;padding:6px 8px;border:1.5px solid var(--border);border-radius:5px;
+      font-size:.82rem;outline:none;background:white;transition:border-color .2s;
+    }
+    .entry-table input:focus,.entry-table select:focus{border-color:var(--sky);}
+    .row-actions{display:flex;gap:4px;}
+    .btn-icon{
+      width:26px;height:26px;border:none;border-radius:5px;cursor:pointer;
+      font-size:.8rem;display:flex;align-items:center;justify-content:center;
+      transition:opacity .15s;
+    }
+    .btn-remove{background:#FDEDEC;color:var(--red);}
+    .btn-remove:hover{opacity:.75;}
+
+    .add-row-btn{
+      padding:8px 18px;background:var(--ice);color:var(--sky);border:1.5px dashed #90C8F0;
+      border-radius:7px;font-size:.83rem;font-weight:600;cursor:pointer;
+      display:flex;align-items:center;gap:6px;transition:background .15s;
+    }
+    .add-row-btn:hover{background:#C5E2F7;}
+
+    /* ── Upload card (image / excel) ── */
+    .upload-card{background:var(--white);border:2px dashed var(--border);border-radius:12px;padding:32px;text-align:center;cursor:pointer;position:relative;transition:border-color .2s,background .2s;}
+    .upload-card.drag{border-color:var(--sky);background:var(--ice);}
+    .upload-card input[type=file]{position:absolute;inset:0;opacity:0;cursor:pointer;width:100%;height:100%;}
+    .upload-icon{font-size:2.4rem;margin-bottom:10px;}
+    .upload-card h2{font-size:.97rem;color:var(--navy);margin-bottom:5px;}
+    .upload-card p{font-size:.82rem;color:var(--muted);}
+    .file-status{margin-top:12px;font-size:.85rem;font-weight:600;color:var(--green);min-height:18px;}
+    .file-status.error{color:var(--red);}
+
+    .img-preview{max-width:100%;border-radius:8px;border:1px solid var(--border);margin-top:14px;display:none;}
+
+    /* ── Stats ── */
+    .stats-bar{display:flex;gap:14px;flex-wrap:wrap;margin-top:20px;}
+    .stat{background:var(--white);border:1px solid var(--border);border-radius:8px;padding:12px 18px;min-width:130px;}
+    .stat-value{font-size:1.6rem;font-weight:800;color:var(--sky);}
+    .stat-label{font-size:.73rem;color:var(--muted);margin-top:2px;text-transform:uppercase;letter-spacing:.5px;}
+
+    /* ── Preview table ── */
+    .table-wrap{overflow-x:auto;border:1px solid var(--border);border-radius:10px;margin-top:4px;}
+    .preview-tbl{width:100%;border-collapse:collapse;font-size:.8rem;}
+    .preview-tbl th{padding:9px 12px;text-align:left;font-weight:700;font-size:.72rem;text-transform:uppercase;letter-spacing:.5px;white-space:nowrap;background:#1E6FA8;color:white;}
+    .preview-tbl td{padding:8px 12px;border-bottom:1px solid #EEF3F8;white-space:nowrap;}
+    .preview-tbl tr:nth-child(even) td{background:#F8FBFF;}
+    .flt{font-family:monospace;font-weight:600;}
+    .time{font-family:monospace;color:var(--navy);}
+
+    /* ── Download ── */
+    .btn-wrap{margin-top:28px;display:flex;gap:14px;flex-wrap:wrap;align-items:center;}
+    .btn-dl{padding:11px 28px;background:linear-gradient(135deg,var(--sky),var(--navy));color:white;border:none;border-radius:7px;font-size:.9rem;font-weight:700;cursor:pointer;display:flex;align-items:center;gap:8px;transition:opacity .2s,transform .15s;box-shadow:0 2px 8px rgba(30,111,168,.25);}
+    .btn-dl:hover:not(:disabled){opacity:.88;transform:translateY(-1px);}
+    .btn-dl:disabled{opacity:.4;cursor:not-allowed;}
+    .btn-count{font-size:.8rem;color:var(--muted);align-self:center;}
+
+    .btn-secondary{
+      padding:9px 20px;background:var(--off);color:var(--navy);border:1.5px solid var(--border);
+      border-radius:7px;font-size:.85rem;font-weight:600;cursor:pointer;transition:background .15s;
+    }
+    .btn-secondary:hover{background:#E8EEF4;}
+
+    #log{margin-top:22px;background:var(--navy);color:#B8D8F0;border-radius:8px;padding:14px 18px;font-size:.79rem;font-family:'Courier New',monospace;max-height:150px;overflow-y:auto;display:none;line-height:1.65;}
+    #log.visible{display:block;}
+    .log-ok{color:#7FD4A0;} .log-err{color:#F5A5A0;} .log-info{color:#9FC8E8;}
+
+    .note-box{
+      background:var(--amber-bg);border:1px solid #F0CB5C;border-radius:8px;
+      padding:10px 16px;font-size:.8rem;color:#7D5C00;margin-bottom:18px;
+      display:flex;gap:10px;align-items:flex-start;
+    }
+
+    /* ── Timezone toggle ── */
+    .tz-toggle-card{
+      background:var(--white);border:1.5px solid var(--border);border-radius:12px;
+      padding:18px 22px;margin-bottom:20px;
+    }
+    .tz-toggle-label{font-size:.85rem;font-weight:700;color:var(--navy);margin-bottom:12px;display:flex;align-items:center;gap:8px;}
+    .tz-options{display:flex;gap:12px;}
+    .tz-option{
+      flex:1;padding:14px 16px;border:2px solid var(--border);border-radius:10px;
+      cursor:pointer;transition:border-color .2s,background .2s;text-align:center;
+      display:flex;flex-direction:column;align-items:center;gap:4px;
+    }
+    .tz-option.selected{border-color:var(--sky);background:var(--ice);}
+    .tz-option-icon{font-size:1.4rem;}
+    .tz-option-title{font-size:.86rem;font-weight:700;color:var(--navy);}
+    .tz-option-desc{font-size:.74rem;color:var(--muted);}
+    .tz-option input{display:none;}
+
+    footer{text-align:center;padding:18px;font-size:.75rem;color:var(--muted);}
+
+    @media (max-width:680px){header{padding:20px;}nav{padding:10px 16px;gap:14px;}}
+  </style>
+</head>
+<body>
+<nav style="background:#0B1F3A;padding:0 40px;display:flex;gap:24px;align-items:center;height:56px;flex-wrap:wrap;">
+  <span style="color:white;font-size:.95rem;font-weight:800;margin-right:auto;letter-spacing:.5px;">✈ JEDDAH OPS</span>
+  <a href="dashboard.html" style="color:rgba(255,255,255,.65);text-decoration:none;font-size:.83rem;font-weight:600;padding:5px 0;border-bottom:2px solid transparent;">Dashboard</a>
+  <a href="index.html" style="color:rgba(255,255,255,.65);text-decoration:none;font-size:.83rem;font-weight:600;padding:5px 0;border-bottom:2px solid transparent;">Delay Reports</a>
+  <a href="totals.html" style="color:rgba(255,255,255,.65);text-decoration:none;font-size:.83rem;font-weight:600;padding:5px 0;border-bottom:2px solid transparent;">Movement Totals</a>
+  <a href="schedule.html" style="color:rgba(255,255,255,.65);text-decoration:none;font-size:.83rem;font-weight:600;padding:5px 0;border-bottom:2px solid transparent;">Daily Schedule</a>
+  <a href="ms-schedule.html" style="color:rgba(255,255,255,.65);text-decoration:none;font-size:.83rem;font-weight:600;padding:5px 0;border-bottom:2px solid transparent;">MS Schedule</a>
+  <a href="iy-flights.html" style="color:white;text-decoration:none;font-size:.83rem;font-weight:600;padding:5px 0;border-bottom:2px solid #1E6FA8;">IY Flights</a>
+  <a href="garuda-flights.html" style="color:rgba(255,255,255,.65);text-decoration:none;font-size:.83rem;font-weight:600;padding:5px 0;border-bottom:2px solid transparent;">Garuda Flights</a>
+  <a href="ah-flights.html" style="color:rgba(255,255,255,.65);text-decoration:none;font-size:.83rem;font-weight:600;padding:5px 0;border-bottom:2px solid transparent;">AH Flights</a>
+  <a href="at-flights.html" style="color:rgba(255,255,255,.65);text-decoration:none;font-size:.83rem;font-weight:600;padding:5px 0;border-bottom:2px solid transparent;">AT Flights</a>
+  <a href="sm-flights.html" style="color:rgba(255,255,255,.65);text-decoration:none;font-size:.83rem;font-weight:600;padding:5px 0;border-bottom:2px solid transparent;">SM Flights</a>
+  <a href="admin.html" id="navAdmin" style="color:rgba(255,255,255,.65);text-decoration:none;font-size:.83rem;font-weight:600;padding:5px 0;border-bottom:2px solid transparent;display:none;">Admin</a>
+  <button onclick="signOutNav()" style="background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.15);color:white;padding:6px 14px;border-radius:6px;font-size:.8rem;font-weight:600;cursor:pointer;">Sign out</button>
+</nav>
+<script>
+(async () => {
+  const _sb = supabase.createClient("https://ypwskjjkwnchxwiordqd.supabase.co", "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inlwd3Nramprd25jaHh3aW9yZHFkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODI3MTA0MzQsImV4cCI6MjA5ODI4NjQzNH0.0HKlBWg2O0WuOat2deWpB_9baFr7JGFTZcHzEga86Kw");
+  const { data: { session } } = await _sb.auth.getSession();
+  if (!session) { window.location.replace("login.html"); return; }
+  const { data: profile } = await _sb.from("profiles").select("role").eq("id", session.user.id).single();
+  if (profile?.role === "superadmin") {
+    document.getElementById("navAdmin").style.display = "";
+  }
+})();
+async function signOutNav() {
+  const _sb = supabase.createClient("https://ypwskjjkwnchxwiordqd.supabase.co", "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inlwd3Nramprd25jaHh3aW9yZHFkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODI3MTA0MzQsImV4cCI6MjA5ODI4NjQzNH0.0HKlBWg2O0WuOat2deWpB_9baFr7JGFTZcHzEga86Kw");
+  await _sb.auth.signOut();
+  window.location.replace("login.html");
+}
+</script>
+
+
+
+<header>
+  <h1>🇾🇪 Yemenia (IY) Schedule Generator</h1>
+  <p>Type in the schedule manually, or upload an Excel/CSV version · outputs a system-ready CSV</p>
+</header>
+
+<main>
+
+  <div class="section-title">① Confirm Source Timezone</div>
+
+  <div class="tz-toggle-card">
+    <div class="tz-toggle-label">⏱ Are the times in this schedule already in UTC, or local time?</div>
+    <div class="tz-options">
+      <label class="tz-option" id="tzOptUTC" onclick="selectTZ('utc')">
+        <input type="radio" name="tz" value="utc">
+        <div class="tz-option-icon">🌐</div>
+        <div class="tz-option-title">Already UTC</div>
+        <div class="tz-option-desc">No conversion needed — use times as-is</div>
+      </label>
+      <label class="tz-option selected" id="tzOptLocal" onclick="selectTZ('local')">
+        <input type="radio" name="tz" value="local" checked>
+        <div class="tz-option-icon">🕐</div>
+        <div class="tz-option-title">Local Time (UTC+3)</div>
+        <div class="tz-option-desc">Subtract 3 hours to convert to UTC</div>
+      </label>
+    </div>
+  </div>
+
+  <div class="section-title">② Choose Input Method</div>
+  <div class="mode-tabs">
+    <div class="mode-tab active" id="tab-manual" onclick="switchMode('manual')">✏️ Manual Entry</div>
+    <div class="mode-tab" id="tab-upload" onclick="switchMode('upload')">📊 Upload Excel/CSV</div>
+    <div class="mode-tab" id="tab-image" onclick="switchMode('image')">🖼 Reference Image</div>
+  </div>
+
+  <!-- ── MANUAL ENTRY ── -->
+  <div class="mode-pane active" id="pane-manual">
+    <div class="note-box">
+      💡 Enter each flight pair as shown on the Yemenia schedule. Flight number format: <strong>512-513</strong> (arrival-departure). Route format: <strong>ADE-JED-ADE</strong> (origin-hub-destination).
+    </div>
+    <div class="note-box" style="background:#EAF6FF;border-color:#90C8F0;color:#0C447C">
+      🕐 Enter times exactly as shown on the schedule (local time, UTC+3). The system automatically converts to UTC for the CSV — dates roll back a day where needed.
+    </div>
+
+    <table class="entry-table" id="entryTable">
+      <thead>
+        <tr>
+          <th style="width:11%">Date</th>
+          <th style="width:9%">Day</th>
+          <th style="width:14%">Flt Nbr</th>
+          <th style="width:8%">Type</th>
+          <th style="width:11%">Regn</th>
+          <th style="width:9%">ARR JED</th>
+          <th style="width:9%">DEP JED</th>
+          <th style="width:21%">Route</th>
+          <th style="width:8%"></th>
+        </tr>
+      </thead>
+      <tbody id="entryBody"></tbody>
+    </table>
+
+    <button class="add-row-btn" onclick="addRow()">+ Add Flight Row</button>
+
+    <div class="btn-wrap">
+      <button class="btn-dl" onclick="generateFromManual()">⚙ Generate Preview</button>
+    </div>
+  </div>
+
+  <!-- ── EXCEL/CSV UPLOAD ── -->
+  <div class="mode-pane" id="pane-upload">
+    <div class="upload-card" id="dropzone">
+      <input type="file" id="fileInput" accept=".xlsx,.xls,.csv" />
+      <div class="upload-icon">📊</div>
+      <h2>Drop the Yemenia schedule Excel/CSV here, or click to browse</h2>
+      <p>Expected columns: Date, Day, Flt Nbr, Type, Regn, Arr JED, Dep JED, Route</p>
+      <div class="file-status" id="fileStatus"></div>
+    </div>
+  </div>
+
+  <!-- ── REFERENCE IMAGE / OCR ── -->
+  <div class="mode-pane" id="pane-image">
+    <div class="note-box">
+      🔍 OCR (text recognition) attempts to read the schedule table automatically. It works best on clear, high-resolution screenshots with a simple grid layout. Always review the auto-filled rows in Manual Entry before generating — OCR can misread digits.
+    </div>
+    <div class="upload-card" id="dropzoneImg">
+      <input type="file" id="imgInput" accept="image/*" />
+      <div class="upload-icon">🖼</div>
+      <h2>Drop a photo of the schedule here</h2>
+      <p>The image will be scanned automatically and matching rows added to Manual Entry for review.</p>
+    </div>
+    <img id="imgPreview" class="img-preview" />
+    <div id="ocrStatus" style="display:none;margin-top:14px;">
+      <div style="display:flex;align-items:center;gap:10px;font-size:.85rem;color:var(--sky);font-weight:600;">
+        <div class="ocr-spinner"></div>
+        <span id="ocrStatusText">Reading image…</span>
+      </div>
+      <div style="background:#EEF3F8;border-radius:6px;height:6px;margin-top:8px;overflow:hidden;">
+        <div id="ocrProgressBar" style="background:var(--sky);height:100%;width:0%;transition:width .2s;"></div>
+      </div>
+    </div>
+    <div id="ocrResultBox" style="display:none;margin-top:16px;background:#EAF6FF;border:1px solid #90C8F0;border-radius:8px;padding:14px 16px;">
+      <div style="font-size:.85rem;font-weight:700;color:#0C447C;margin-bottom:6px;" id="ocrResultTitle"></div>
+      <div style="font-size:.8rem;color:#0C447C;" id="ocrResultDesc"></div>
+    </div>
+  </div>
+
+  <style>
+    .ocr-spinner{width:14px;height:14px;border:2px solid #D6EAF8;border-top-color:#1E6FA8;border-radius:50%;animation:ocrspin .7s linear infinite;}
+    @keyframes ocrspin{to{transform:rotate(360deg);}}
+  </style>
+
+  <!-- ── PREVIEW ── -->
+  <div id="previewSection" style="display:none">
+    <div class="stats-bar">
+      <div class="stat"><div class="stat-value" id="statRows">0</div><div class="stat-label">TurnAround Pairs</div></div>
+      <div class="stat"><div class="stat-value" id="statDates" style="font-size:1rem;padding-top:4px">—</div><div class="stat-label">Date Range</div></div>
+      <div class="stat"><div class="stat-value" id="statAC">0</div><div class="stat-label">Aircraft Used</div></div>
+    </div>
+
+    <div class="section-title" style="margin-top:24px">③ Preview</div>
+    <div class="table-wrap">
+      <table class="preview-tbl">
+        <thead>
+          <tr>
+            <th>#</th><th>Arr Flt</th><th>Dep Flt</th><th>AC Reg</th><th>AC Type</th>
+            <th>Origin</th><th>Dest</th><th>STA (UTC)</th><th>STD (UTC)</th><th>SDA</th><th>SDD</th>
+          </tr>
+        </thead>
+        <tbody id="previewBody"></tbody>
+      </table>
+    </div>
+
+    <div class="section-title">④ Download CSV</div>
+    <div class="btn-wrap">
+      <button class="btn-dl" id="btnDl" onclick="downloadCSV()">⬇ Download CSV for System Upload</button>
+      <span class="btn-count" id="btnCount"></span>
+    </div>
+  </div>
+
+  <div id="log"></div>
+</main>
+
+<footer>Yemenia Schedule Generator · runs entirely in your browser · no data uploaded anywhere</footer>
+
+<script>
+// ───────────────────────────────────────────────
+//  Mode switching
+// ───────────────────────────────────────────────
+function switchMode(mode) {
+  ['manual','upload','image'].forEach(m => {
+    document.getElementById('tab-'+m).className = 'mode-tab' + (m===mode ? ' active' : '');
+    document.getElementById('pane-'+m).className = 'mode-pane' + (m===mode ? ' active' : '');
+  });
+}
+
+// ───────────────────────────────────────────────
+//  Manual entry table
+// ───────────────────────────────────────────────
+let rowCounter = 0;
+
+function addRow(prefill) {
+  rowCounter++;
+  const id = rowCounter;
+  const p = prefill || {};
+  const tr = document.createElement('tr');
+  tr.id = `row-${id}`;
+  tr.innerHTML = `
+    <td><input type="text" id="date-${id}" placeholder="30-Jun-26" value="${p.date||''}"></td>
+    <td><input type="text" id="day-${id}" placeholder="TUE" value="${p.day||''}"></td>
+    <td><input type="text" id="flt-${id}" placeholder="512-513" value="${p.flt||''}"></td>
+    <td><input type="text" id="type-${id}" placeholder="A320" value="${p.type||'A320'}"></td>
+    <td><input type="text" id="reg-${id}" placeholder="7O-AFG" value="${p.reg||''}"></td>
+    <td><input type="text" id="arr-${id}" placeholder="0500" value="${p.arr||''}"></td>
+    <td><input type="text" id="dep-${id}" placeholder="0610" value="${p.dep||''}"></td>
+    <td><input type="text" id="route-${id}" placeholder="ADE-JED-ADE" value="${p.route||'ADE-JED-ADE'}"></td>
+    <td class="row-actions"><button class="btn-icon btn-remove" onclick="removeRow(${id})" title="Remove row">✕</button></td>
+  `;
+  document.getElementById('entryBody').appendChild(tr);
+}
+
+function removeRow(id) {
+  const el = document.getElementById(`row-${id}`);
+  if (el) el.remove();
+}
+
+// Pre-fill with 2 example rows on load
+addRow({date:'30-Jun-26', day:'TUE', flt:'512-513', type:'A320', reg:'7O-AFG', arr:'0500', dep:'0610', route:'ADE-JED-ADE'});
+
+// ───────────────────────────────────────────────
+//  AC type passthrough (Yemenia types are already standard, e.g. A320)
+// ───────────────────────────────────────────────
+function mapAC(raw) {
+  const s = String(raw||'').trim().toUpperCase();
+  return s || 'A320';
+}
+
+// ───────────────────────────────────────────────
+//  Date parsing: "30-Jun-26" → Date object
+// ───────────────────────────────────────────────
+const MONTHS = {jan:0,feb:1,mar:2,apr:3,may:4,jun:5,jul:6,aug:7,sep:8,oct:9,nov:10,dec:11};
+function parseDDMMMYY(s) {
+  const m = String(s).trim().match(/^(\d{1,2})[\-\/]([A-Za-z]{3})[\-\/](\d{2,4})$/);
+  if (!m) return null;
+  const day = parseInt(m[1],10);
+  const mon = MONTHS[m[2].toLowerCase()];
+  let yr = parseInt(m[3],10);
+  if (yr < 100) yr += 2000;
+  if (mon === undefined) return null;
+  return new Date(yr, mon, day);
+}
+function fmtDate(d) { const mm=String(d.getMonth()+1).padStart(2,"0"); const dd=String(d.getDate()).padStart(2,"0"); return `${mm}/${dd}/${d.getFullYear()}`; }
+
+// ───────────────────────────────────────────────
+//  Local (UTC+3) → UTC conversion
+//  Subtracts 3 hours from a local HHmm time on a given date.
+//  Returns { date: Date, hhmm: 'HHMM' } in UTC, rolling the date
+//  back a day if the subtraction crosses midnight.
+// ───────────────────────────────────────────────
+let pairedRows = [];
+let selectedTZ = 'local'; // 'utc' | 'local'
+
+function selectTZ(tz) {
+  selectedTZ = tz;
+  document.getElementById('tzOptUTC').className   = 'tz-option' + (tz==='utc'   ? ' selected' : '');
+  document.getElementById('tzOptLocal').className = 'tz-option' + (tz==='local' ? ' selected' : '');
+  document.querySelector(`input[value="${tz}"]`).checked = true;
+}
+
+function localToUTC(dateObj, hhmm) {
+  const digits = String(hhmm).replace(/[^0-9]/g, '').padStart(4, '0');
+  const h = parseInt(digits.substring(0,2), 10);
+  const m = parseInt(digits.substring(2,4), 10);
+
+  const local = new Date(dateObj.getFullYear(), dateObj.getMonth(), dateObj.getDate(), h, m);
+  const utc = new Date(local.getTime() - 3 * 60 * 60 * 1000);
+
+  const utcHHMM = utc.getHours().toString().padStart(2,'0') + utc.getMinutes().toString().padStart(2,'0');
+  const utcDate = new Date(utc.getFullYear(), utc.getMonth(), utc.getDate());
+
+  return { date: utcDate, hhmm: utcHHMM };
+}
+
+// ── If already UTC, just pass through (no time-shift) ──
+function asUTC(dateObj, hhmm) {
+  const digits = String(hhmm).replace(/[^0-9]/g, '').padStart(4, '0');
+  return { date: new Date(dateObj.getFullYear(), dateObj.getMonth(), dateObj.getDate()), hhmm: digits };
+}
+
+// ───────────────────────────────────────────────
+//  Generate from manual table
+// ───────────────────────────────────────────────
+function generateFromManual() {
+  clearLog();
+  const rows = Array.from(document.querySelectorAll('#entryBody tr'));
+  if (rows.length === 0) { logLine('No rows to process.', 'err'); return; }
+
+  const out = [];
+  let errors = 0;
+
+  rows.forEach((tr, idx) => {
+    const id = tr.id.replace('row-','');
+    const dateStr = document.getElementById(`date-${id}`).value.trim();
+    const flt     = document.getElementById(`flt-${id}`).value.trim();
+    const type    = document.getElementById(`type-${id}`).value.trim();
+    const reg     = document.getElementById(`reg-${id}`).value.trim();
+    const arr     = document.getElementById(`arr-${id}`).value.trim();
+    const dep     = document.getElementById(`dep-${id}`).value.trim();
+    const route   = document.getElementById(`route-${id}`).value.trim();
+
+    if (!dateStr || !flt || !route) return; // skip empty rows
+
+    const d = parseDDMMMYY(dateStr);
+    if (!d) { logLine(`Row ${idx+1}: invalid date "${dateStr}" (use DD-MMM-YY, e.g. 30-Jun-26)`, 'err'); errors++; return; }
+
+    const fltParts = flt.split('-');
+    if (fltParts.length !== 2) { logLine(`Row ${idx+1}: invalid flight number "${flt}" (use ArrFno-DepFno, e.g. 512-513)`, 'err'); errors++; return; }
+    const [arrFno, depFno] = fltParts.map(s => s.trim());
+
+    const legs = route.split('-').map(s => s.trim());
+    if (legs.length < 2) { logLine(`Row ${idx+1}: invalid route "${route}" (use ORIGIN-JED-DEST, e.g. ADE-JED-ADE)`, 'err'); errors++; return; }
+    const origin = legs[0];
+    const dest   = legs[legs.length - 1];
+
+    const regClean = 'IY' === reg.substring(0,2).toUpperCase()
+      ? reg.substring(2).replace(/[^A-Za-z0-9]/g, '').toUpperCase()
+      : reg.replace(/[^A-Za-z0-9]/g, '').toUpperCase();
+
+    // Convert local (UTC+3) arrival/departure times to UTC — each can roll its date back independently
+    const convertFn = selectedTZ === 'local' ? localToUTC : asUTC;
+    const arrUTC = convertFn(d, arr);
+    const depUTC = convertFn(d, dep);
+
+    out.push({
+      'Sl.No.':           '',
+      'AirlineCode':      'IY',
+      'ServiceType':      'TurnAround',
+      'SDA':              fmtDate(arrUTC.date),
+      'SDD':              fmtDate(depUTC.date),
+      'ArrFno':           arrFno,
+      'DepFno':           depFno,
+      'Aircraft':         mapAC(type),
+      'Aircraft Reg':     regClean,
+      'Origin1':          origin,
+      'Origin2':          '',
+      'Dest1':            dest,
+      'Dest2':            '',
+      'STA':              arrUTC.hhmm,
+      'STD':              depUTC.hhmm,
+      'ArrivalRemarks':   '',
+      'DepartureRemarks': '',
+      _sda: arrUTC.date, _sta: arrUTC.hhmm
+    });
+  });
+
+  if (errors > 0) {
+    logLine(`${errors} row(s) had errors — please fix and try again.`, 'err');
+  }
+
+  out.sort((a,b) => {
+    const dt = a._sda - b._sda;
+    if (dt !== 0) return dt;
+    return (a._sta||'').localeCompare(b._sta||'');
+  });
+  out.forEach((r,i) => r['Sl.No.'] = String(i+1));
+
+  pairedRows = out;
+  logLine(`Generated ${out.length} TurnAround rows`, 'ok');
+  updateUI(out);
+}
+
+// ───────────────────────────────────────────────
+//  Excel/CSV upload
+// ───────────────────────────────────────────────
+const dz = document.getElementById('dropzone');
+dz.addEventListener('dragover',  e => { e.preventDefault(); dz.classList.add('drag'); });
+dz.addEventListener('dragleave', () => dz.classList.remove('drag'));
+dz.addEventListener('drop', e => { e.preventDefault(); dz.classList.remove('drag'); if(e.dataTransfer.files[0]) processSpreadsheet(e.dataTransfer.files[0]); });
+document.getElementById('fileInput').addEventListener('change', e => { if(e.target.files[0]) processSpreadsheet(e.target.files[0]); });
+
+function processSpreadsheet(file) {
+  const st = document.getElementById('fileStatus');
+  st.className = 'file-status';
+  st.textContent = `Reading "${file.name}"…`;
+  clearLog();
+  const reader = new FileReader();
+  reader.onload = e => {
+    try { parseSpreadsheet(e.target.result); }
+    catch(err) { st.className='file-status error'; st.textContent='❌ '+err.message; logLine('Error: '+err.message,'err'); }
+  };
+  reader.readAsArrayBuffer(file);
+}
+
+function parseSpreadsheet(buffer) {
+  const wb = XLSX.read(buffer, { type:'array' });
+  const ws = wb.Sheets[wb.SheetNames[0]];
+  const rows = XLSX.utils.sheet_to_json(ws, { defval:'' });
+
+  if (rows.length === 0) throw new Error('No rows found in file');
+
+  logLine(`Found ${rows.length} rows in spreadsheet`, 'info');
+
+  // Clear manual table and populate from spreadsheet
+  document.getElementById('entryBody').innerHTML = '';
+  rowCounter = 0;
+
+  rows.forEach(row => {
+    // Try to flexibly match column names
+    const keys = Object.keys(row);
+    const find = (...names) => {
+      for (const n of names) {
+        const k = keys.find(k => k.toLowerCase().replace(/[^a-z]/g,'') === n);
+        if (k) return row[k];
+      }
+      return '';
+    };
+    addRow({
+      date:  String(find('date')),
+      day:   String(find('day')),
+      flt:   String(find('fltnbr','flightnbr','flightnumber','fltno')),
+      type:  String(find('type','actype','aircraft')),
+      reg:   String(find('regn','registration','reg')),
+      arr:   String(find('arrjed','arr','sta')),
+      dep:   String(find('depjed','dep','std')),
+      route: String(find('route'))
+    });
+  });
+
+  document.getElementById('fileStatus').textContent = `✅ Loaded ${rows.length} rows into the entry table`;
+  switchMode('manual');
+  logLine('Switched to Manual Entry tab — review and click Generate Preview', 'info');
+}
+
+// ───────────────────────────────────────────────
+//  Reference image upload — OCR auto-parse into Manual Entry
+// ───────────────────────────────────────────────
+const dzImg = document.getElementById('dropzoneImg');
+dzImg.addEventListener('dragover',  e => { e.preventDefault(); dzImg.classList.add('drag'); });
+dzImg.addEventListener('dragleave', () => dzImg.classList.remove('drag'));
+dzImg.addEventListener('drop', e => { e.preventDefault(); dzImg.classList.remove('drag'); if(e.dataTransfer.files[0]) handleImageUpload(e.dataTransfer.files[0]); });
+document.getElementById('imgInput').addEventListener('change', e => { if(e.target.files[0]) handleImageUpload(e.target.files[0]); });
+
+function handleImageUpload(file) {
+  showImagePreview(file);
+  runOCR(file);
+}
+
+function showImagePreview(file) {
+  const reader = new FileReader();
+  reader.onload = e => {
+    const img = document.getElementById('imgPreview');
+    img.src = e.target.result;
+    img.style.display = 'block';
+  };
+  reader.readAsDataURL(file);
+}
+
+async function runOCR(file) {
+  const statusEl   = document.getElementById('ocrStatus');
+  const statusText = document.getElementById('ocrStatusText');
+  const progBar    = document.getElementById('ocrProgressBar');
+  const resultBox  = document.getElementById('ocrResultBox');
+  const resultTitle= document.getElementById('ocrResultTitle');
+  const resultDesc = document.getElementById('ocrResultDesc');
+
+  resultBox.style.display = 'none';
+  statusEl.style.display = 'block';
+  statusText.textContent = 'Loading OCR engine…';
+  progBar.style.width = '0%';
+
+  try {
+    const result = await Tesseract.recognize(file, 'eng', {
+      workerPath: 'https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/worker.min.js',
+      corePath:   'https://cdn.jsdelivr.net/npm/tesseract.js-core@5/tesseract-core-simd.wasm.js',
+      langPath:   'https://tessdata.projectnaptha.com/4.0.0',
+      logger: m => {
+        if (m.status === 'recognizing text') {
+          statusText.textContent = `Reading image… ${Math.round(m.progress*100)}%`;
+          progBar.style.width = (m.progress*100) + '%';
+        } else if (m.status) {
+          statusText.textContent = m.status.charAt(0).toUpperCase() + m.status.slice(1) + '…';
+        }
+      }
+    });
+
+    statusEl.style.display = 'none';
+    const text = result.data.text;
+    const parsedRows = parseScheduleText(text);
+
+    if (parsedRows.length === 0) {
+      resultBox.style.display = 'block';
+      resultTitle.textContent = '⚠️ No flight rows detected';
+      resultDesc.innerHTML = 'OCR could not confidently identify any flight rows in this image. Please use <strong>Manual Entry</strong> to type the schedule in directly.';
+      logLine('OCR found no parseable rows in the image', 'err');
+      return;
+    }
+
+    // Clear manual table and populate with OCR results
+    document.getElementById('entryBody').innerHTML = '';
+    rowCounter = 0;
+    parsedRows.forEach(r => addRow(r));
+
+    resultBox.style.display = 'block';
+    resultTitle.textContent = `✅ Detected ${parsedRows.length} flight row(s)`;
+    resultDesc.innerHTML = `Rows have been added to <strong>Manual Entry</strong> — please review each field carefully before generating, since OCR can misread digits (0/O, 1/I, 5/S, etc).`;
+    logLine(`OCR detected ${parsedRows.length} candidate row(s) — review in Manual Entry`, 'ok');
+
+    switchMode('manual');
+
+  } catch (err) {
+    statusEl.style.display = 'none';
+    resultBox.style.display = 'block';
+    const isWorkerBlocked = /Worker|blob-request|cannot be accessed/i.test(err.message);
+    resultTitle.textContent = '❌ OCR failed';
+    if (isWorkerBlocked) {
+      resultDesc.innerHTML = 'Your browser/environment blocked the OCR engine from loading (this can happen in some embedded previews or strict-security browser setups). Try opening this file directly in Chrome or Edge, or use <strong>Manual Entry</strong> instead.';
+    } else {
+      resultDesc.textContent = 'Error: ' + err.message + '. Please use Manual Entry instead.';
+    }
+    logLine('OCR error: ' + err.message, 'err');
+  }
+}
+
+// ── Parse raw OCR text into candidate flight rows ──
+// Tesseract often breaks a table into fragmented lines (column-wise reads,
+// split cells, etc), so instead of requiring one clean line per row, we:
+//   1. Tokenize the whole text into words/cells
+//   2. Find every flight-number anchor (e.g. "512-513" or "IY512-513")
+//   3. Look at a window of tokens before/after each anchor for date, times,
+//      route, registration, and aircraft type
+function parseScheduleText(text) {
+  // Normalize: collapse all whitespace/newlines into single spaces, but also
+  // keep a token array for windowed searching.
+  const cleaned = text.replace(/[|_]/g, ' ').replace(/\s+/g, ' ').trim();
+  const tokens = cleaned.split(' ').filter(Boolean);
+
+  const dateRe  = /^\d{1,2}[-\/.][A-Za-z]{3}[-\/.]\d{2,4}$/;
+  const fltRe   = /^(?:IY)?(\d{3})-(\d{3})$/i;
+  const fltLooseRe = /(?:IY)?(\d{3})\s*[-–—]\s*(\d{3})/i; // handles split tokens like "IY512" "-513" too
+  const timeRe  = /^[0-2]\d{3}$/;
+  const routeRe = /^[A-Z]{3}-[A-Z]{3}-[A-Z]{3}$/i;
+  const regRe   = /^7[O0][-\s]?[A-Z]{3}$/i;
+  const typeRe  = /^(A3\d{2}|B7\d{2})$/i;
+  const dittoRe = /^["“”'']{1,2}$/;
+
+  const rows = [];
+  let lastDate = '';
+
+  // Find flight-number anchors. Only match the STRICT pattern (one token like
+  // "512-513" or "IY512-513") to avoid the loose 3-token join creating
+  // duplicate/overlapping anchors at every position.
+  const anchors = [];
+  for (let i = 0; i < tokens.length; i++) {
+    const m = tokens[i].match(fltRe);
+    if (m) anchors.push({ index: i, arrFno: m[1], depFno: m[2] });
+  }
+
+  // If strict matching found nothing at all (e.g. OCR split "IY512" and "-513"
+  // into separate tokens), fall back to the loose joined-token scan.
+  if (anchors.length === 0) {
+    for (let i = 0; i < tokens.length - 1; i++) {
+      const joined = tokens.slice(i, i+3).join('');
+      const m = joined.match(fltLooseRe);
+      if (m) anchors.push({ index: i, arrFno: m[1], depFno: m[2] });
+    }
+  }
+
+  for (const anchor of anchors) {
+    // Real column order is: Date, Day, FltNbr, Type, Reg, ArrTime, DepTime, Route.
+    // So everything we need (type, reg, times, route) comes AFTER the flight
+    // number, and the date/day come BEFORE it. Search forward for the data
+    // fields and only look a couple tokens back for date/day, to avoid
+    // bleeding into the previous row's trailing fields (e.g. its route).
+    const dateWinStart = Math.max(0, anchor.index - 3);
+    const dateWindow    = tokens.slice(dateWinStart, anchor.index);
+
+    const dataWinEnd   = Math.min(tokens.length, anchor.index + 7);
+    const dataWindow    = tokens.slice(anchor.index + 1, dataWinEnd);
+
+    const dateTok = dateWindow.find(t => dateRe.test(t));
+    if (dateTok) lastDate = dateTok.replace(/[\/.]/g, '-');
+
+    const times = dataWindow.filter(t => timeRe.test(t)).slice(0, 2);
+    const routeTok = dataWindow.find(t => routeRe.test(t));
+    const regTok   = dataWindow.find(t => regRe.test(t));
+    const typeTok  = dataWindow.find(t => typeRe.test(t));
+
+    if (times.length < 2) continue;
+
+    rows.push({
+      date:  lastDate,
+      day:   '',
+      flt:   `${anchor.arrFno}-${anchor.depFno}`,
+      type:  typeTok ? typeTok.toUpperCase() : 'A320',
+      reg:   regTok ? regTok.replace(/\s/g,'').toUpperCase() : '',
+      arr:   times[0],
+      dep:   times[1],
+      route: routeTok ? routeTok.toUpperCase() : 'ADE-JED-ADE'
+    });
+  }
+
+  // De-duplicate rows that ended up identical (can happen if OCR repeats a
+  // cell or the window logic double-counts an anchor)
+  const dedupKey = r => [r.date, r.flt, r.arr, r.dep].join('|');
+  const finalRows = [];
+  const seenRows = new Set();
+  for (const r of rows) {
+    const key = dedupKey(r);
+    if (seenRows.has(key)) continue;
+    seenRows.add(key);
+    finalRows.push(r);
+  }
+
+  return finalRows;
+}
+
+// ───────────────────────────────────────────────
+//  Update preview UI
+// ───────────────────────────────────────────────
+function updateUI(rows) {
+  if (rows.length === 0) {
+    document.getElementById('previewSection').style.display = 'none';
+    return;
+  }
+
+  const dates = [...new Set(rows.map(r=>r.SDA))].sort((a,b) => new Date(a) - new Date(b));
+  const acSet = new Set(rows.map(r => r['Aircraft Reg']));
+
+  document.getElementById('statRows').textContent  = rows.length;
+  document.getElementById('statDates').textContent = dates.length > 1 ? `${dates[0]} – ${dates[dates.length-1]}` : dates[0]||'—';
+  document.getElementById('statAC').textContent    = acSet.size;
+
+  const tbody = document.getElementById('previewBody');
+  tbody.innerHTML = '';
+  rows.forEach((r,i) => {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td>${i+1}</td>
+      <td class="flt">IY${r.ArrFno}</td>
+      <td class="flt">IY${r.DepFno}</td>
+      <td><strong>${r['Aircraft Reg']}</strong></td>
+      <td>${r.Aircraft}</td>
+      <td>${r.Origin1}</td>
+      <td>${r.Dest1}</td>
+      <td class="time">${r.STA}</td>
+      <td class="time">${r.STD}</td>
+      <td>${r.SDA}</td>
+      <td>${r.SDD}</td>
+    `;
+    tbody.appendChild(tr);
+  });
+
+  document.getElementById('btnCount').textContent = `${rows.length} rows`;
+  document.getElementById('previewSection').style.display = 'block';
+  document.getElementById('previewSection').scrollIntoView({ behavior:'smooth', block:'start' });
+}
+
+// ───────────────────────────────────────────────
+//  Download CSV
+// ───────────────────────────────────────────────
+const CSV_HEADERS = ['Sl.No.','AirlineCode','ServiceType','SDA','SDD','ArrFno','DepFno',
+  'Aircraft','Aircraft Reg','Origin1','Origin2','Dest1','Dest2','STA','STD','ArrivalRemarks','DepartureRemarks'];
+
+function escapeCSV(v) {
+  const s = String(v===null||v===undefined?'':v);
+  return (s.includes(',')||s.includes('"')||s.includes('\n')) ? '"'+s.replace(/"/g,'""')+'"' : s;
+}
+
+function downloadCSV() {
+  if (pairedRows.length === 0) { logLine('Nothing to download — generate a preview first.', 'err'); return; }
+  const lines = [CSV_HEADERS.join(',')];
+  pairedRows.forEach(r => lines.push(CSV_HEADERS.map(h => escapeCSV(r[h]!==undefined?r[h]:'')).join(',')));
+  const blob = new Blob([lines.join('\r\n')], { type:'text/csv;charset=utf-8;' });
+  const a = document.createElement('a');
+  const date = pairedRows[0]?.SDA?.replace(/\//g,'-') || 'schedule';
+  a.href = URL.createObjectURL(blob);
+  a.download = `IY-Schedule-${date}.csv`;
+  a.click();
+  URL.revokeObjectURL(a.href);
+  logLine(`Downloaded IY-Schedule-${date}.csv (${pairedRows.length} rows) ✅`, 'ok');
+}
+
+// ───────────────────────────────────────────────
+//  Log
+// ───────────────────────────────────────────────
+function logLine(msg, type) {
+  const el = document.getElementById('log');
+  el.classList.add('visible');
+  const d = document.createElement('div');
+  d.className = type==='ok'?'log-ok':type==='err'?'log-err':'log-info';
+  d.textContent = `[${new Date().toLocaleTimeString()}] ${msg}`;
+  el.appendChild(d); el.scrollTop = el.scrollHeight;
+}
+function clearLog() { const el=document.getElementById('log'); el.innerHTML=''; el.classList.remove('visible'); }
+</script>
+</body>
+</html>

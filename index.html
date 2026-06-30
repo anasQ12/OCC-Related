@@ -1,0 +1,628 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Flight Delay Report Generator</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+  <style>
+    :root {
+      --navy:    #0B1F3A;
+      --sky:     #1E6FA8;
+      --ice:     #D6EAF8;
+      --amber:   #E8A020;
+      --red:     #C0392B;
+      --green:   #1A7A4A;
+      --white:   #FFFFFF;
+      --offwhite:#F4F7FA;
+      --border:  #C8D8E8;
+      --text:    #1A2A3A;
+      --muted:   #5A7090;
+      --r1:      #254E7E;
+      --r2:      #1E6FA8;
+      --r3:      #2E86C1;
+    }
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Segoe UI', Arial, sans-serif;
+      background: var(--offwhite);
+      color: var(--text);
+      min-height: 100vh;
+    }
+
+    /* ── Header ── */
+    header {
+      background: linear-gradient(135deg, var(--navy) 0%, var(--sky) 100%);
+      padding: 28px 40px 24px;
+      display: flex;
+      align-items: center;
+      gap: 18px;
+      box-shadow: 0 3px 12px rgba(0,0,0,.22);
+    }
+    header svg { flex-shrink: 0; }
+    header h1 { color: var(--white); font-size: 1.55rem; font-weight: 700; letter-spacing: .3px; line-height: 1.2; }
+    header p  { color: var(--ice);   font-size: .85rem; margin-top: 3px; }
+
+    /* ── Main layout ── */
+    main { max-width: 1000px; margin: 0 auto; padding: 36px 24px 60px; }
+
+    /* ── Upload card ── */
+    .upload-card {
+      background: var(--white);
+      border: 2px dashed var(--border);
+      border-radius: 12px;
+      padding: 40px 32px;
+      text-align: center;
+      transition: border-color .2s, background .2s;
+      cursor: pointer;
+      position: relative;
+    }
+    .upload-card.drag { border-color: var(--sky); background: var(--ice); }
+    .upload-card input[type=file] { position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; height: 100%; }
+    .upload-icon { font-size: 3rem; margin-bottom: 12px; }
+    .upload-card h2 { font-size: 1.1rem; color: var(--navy); margin-bottom: 6px; }
+    .upload-card p  { font-size: .88rem; color: var(--muted); }
+
+    .file-status {
+      margin-top: 14px;
+      font-size: .88rem;
+      font-weight: 600;
+      color: var(--green);
+      min-height: 20px;
+    }
+    .file-status.error { color: var(--red); }
+
+    /* ── Section title ── */
+    .section-title {
+      font-size: 1rem;
+      font-weight: 700;
+      color: var(--navy);
+      margin: 32px 0 14px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .section-title::after {
+      content: '';
+      flex: 1;
+      height: 1px;
+      background: var(--border);
+    }
+
+    /* ── Report cards ── */
+    .reports-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+      gap: 18px;
+    }
+
+    .report-card {
+      background: var(--white);
+      border-radius: 10px;
+      border: 1px solid var(--border);
+      padding: 22px 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      box-shadow: 0 1px 4px rgba(0,0,0,.06);
+      transition: box-shadow .2s, transform .2s;
+    }
+    .report-card:hover { box-shadow: 0 4px 16px rgba(30,111,168,.15); transform: translateY(-2px); }
+
+    .report-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      background: var(--ice);
+      color: var(--navy);
+      font-size: .72rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: .8px;
+      padding: 3px 10px;
+      border-radius: 20px;
+      width: fit-content;
+    }
+
+    .report-card h3 { font-size: .97rem; font-weight: 700; color: var(--navy); line-height: 1.35; }
+    .report-card p  { font-size: .82rem; color: var(--muted); line-height: 1.5; flex: 1; }
+
+    .btn-generate {
+      margin-top: 4px;
+      padding: 9px 18px;
+      background: linear-gradient(135deg, var(--sky), var(--navy));
+      color: var(--white);
+      border: none;
+      border-radius: 6px;
+      font-size: .88rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: opacity .2s, transform .15s;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 7px;
+    }
+    .btn-generate:hover:not(:disabled) { opacity: .88; transform: translateY(-1px); }
+    .btn-generate:disabled { opacity: .45; cursor: not-allowed; }
+
+    /* ── Stats bar ── */
+    .stats-bar {
+      display: flex;
+      gap: 16px;
+      flex-wrap: wrap;
+      margin-top: 24px;
+    }
+    .stat {
+      background: var(--white);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 12px 18px;
+      display: flex;
+      flex-direction: column;
+      min-width: 130px;
+    }
+    .stat-value { font-size: 1.6rem; font-weight: 800; color: var(--sky); }
+    .stat-label { font-size: .75rem; color: var(--muted); margin-top: 2px; }
+
+    /* ── Log ── */
+    #log {
+      margin-top: 28px;
+      background: var(--navy);
+      color: #B8D8F0;
+      border-radius: 8px;
+      padding: 16px 20px;
+      font-size: .8rem;
+      font-family: 'Courier New', monospace;
+      max-height: 180px;
+      overflow-y: auto;
+      display: none;
+      line-height: 1.6;
+    }
+    #log.visible { display: block; }
+    .log-ok  { color: #7FD4A0; }
+    .log-err { color: #F5A5A0; }
+    .log-info{ color: #9FC8E8; }
+
+    /* ── Spinner ── */
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .spinner {
+      display: inline-block;
+      width: 14px; height: 14px;
+      border: 2px solid rgba(255,255,255,.4);
+      border-top-color: white;
+      border-radius: 50%;
+      animation: spin .7s linear infinite;
+    }
+
+    /* ── Footer ── */
+    footer {
+      text-align: center;
+      padding: 18px;
+      font-size: .78rem;
+      color: var(--muted);
+    }
+  </style>
+</head>
+<body>
+<nav style="background:#0B1F3A;padding:0 40px;display:flex;gap:24px;align-items:center;height:56px;flex-wrap:wrap;">
+  <span style="color:white;font-size:.95rem;font-weight:800;margin-right:auto;letter-spacing:.5px;">✈ JEDDAH OPS</span>
+  <a href="dashboard.html" style="color:rgba(255,255,255,.65);text-decoration:none;font-size:.83rem;font-weight:600;padding:5px 0;border-bottom:2px solid transparent;">Dashboard</a>
+  <a href="index.html" style="color:white;text-decoration:none;font-size:.83rem;font-weight:600;padding:5px 0;border-bottom:2px solid #1E6FA8;">Delay Reports</a>
+  <a href="totals.html" style="color:rgba(255,255,255,.65);text-decoration:none;font-size:.83rem;font-weight:600;padding:5px 0;border-bottom:2px solid transparent;">Movement Totals</a>
+  <a href="schedule.html" style="color:rgba(255,255,255,.65);text-decoration:none;font-size:.83rem;font-weight:600;padding:5px 0;border-bottom:2px solid transparent;">Daily Schedule</a>
+  <a href="ms-schedule.html" style="color:rgba(255,255,255,.65);text-decoration:none;font-size:.83rem;font-weight:600;padding:5px 0;border-bottom:2px solid transparent;">MS Schedule</a>
+  <a href="iy-flights.html" style="color:rgba(255,255,255,.65);text-decoration:none;font-size:.83rem;font-weight:600;padding:5px 0;border-bottom:2px solid transparent;">IY Flights</a>
+  <a href="garuda-flights.html" style="color:rgba(255,255,255,.65);text-decoration:none;font-size:.83rem;font-weight:600;padding:5px 0;border-bottom:2px solid transparent;">Garuda Flights</a>
+  <a href="ah-flights.html" style="color:rgba(255,255,255,.65);text-decoration:none;font-size:.83rem;font-weight:600;padding:5px 0;border-bottom:2px solid transparent;">AH Flights</a>
+  <a href="at-flights.html" style="color:rgba(255,255,255,.65);text-decoration:none;font-size:.83rem;font-weight:600;padding:5px 0;border-bottom:2px solid transparent;">AT Flights</a>
+  <a href="sm-flights.html" style="color:rgba(255,255,255,.65);text-decoration:none;font-size:.83rem;font-weight:600;padding:5px 0;border-bottom:2px solid transparent;">SM Flights</a>
+  <a href="admin.html" id="navAdmin" style="color:rgba(255,255,255,.65);text-decoration:none;font-size:.83rem;font-weight:600;padding:5px 0;border-bottom:2px solid transparent;display:none;">Admin</a>
+  <button onclick="signOutNav()" style="background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.15);color:white;padding:6px 14px;border-radius:6px;font-size:.8rem;font-weight:600;cursor:pointer;">Sign out</button>
+</nav>
+<script>
+(async () => {
+  const _sb = supabase.createClient("https://ypwskjjkwnchxwiordqd.supabase.co", "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inlwd3Nramprd25jaHh3aW9yZHFkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODI3MTA0MzQsImV4cCI6MjA5ODI4NjQzNH0.0HKlBWg2O0WuOat2deWpB_9baFr7JGFTZcHzEga86Kw");
+  const { data: { session } } = await _sb.auth.getSession();
+  if (!session) { window.location.replace("login.html"); return; }
+  const { data: profile } = await _sb.from("profiles").select("role").eq("id", session.user.id).single();
+  if (profile?.role === "superadmin") {
+    document.getElementById("navAdmin").style.display = "";
+  }
+})();
+async function signOutNav() {
+  const _sb = supabase.createClient("https://ypwskjjkwnchxwiordqd.supabase.co", "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inlwd3Nramprd25jaHh3aW9yZHFkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODI3MTA0MzQsImV4cCI6MjA5ODI4NjQzNH0.0HKlBWg2O0WuOat2deWpB_9baFr7JGFTZcHzEga86Kw");
+  await _sb.auth.signOut();
+  window.location.replace("login.html");
+}
+</script>
+
+
+<header>
+  <!-- Plane icon -->
+  <svg width="40" height="40" viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <circle cx="20" cy="20" r="20" fill="rgba(255,255,255,0.12)"/>
+    <path d="M8 22l4-2 3 3 10-12 2 1-8 14-3-2-2 3-3-1 1-3-4-1z" fill="white" opacity=".9"/>
+    <path d="M26 10l4 2-12 10-1-2 9-10z" fill="white" opacity=".6"/>
+  </svg>
+  <div>
+    <h1>Flight Delay Report Generator</h1>
+    <p>Upload the XML delay report · generate filtered Excel reports in one click</p>
+  </div>
+</header>
+
+<main>
+
+  <!-- Upload -->
+  <div class="section-title">① Upload XML File</div>
+
+  <div class="upload-card" id="dropzone">
+    <input type="file" id="xmlInput" accept=".xml" />
+    <div class="upload-icon">📂</div>
+    <h2>Drop your XML file here, or click to browse</h2>
+    <p>Accepts <strong>FS-Delay_Report-DATE_RANGE.xml</strong> (or any similarly structured file)</p>
+    <div class="file-status" id="fileStatus"></div>
+  </div>
+
+  <!-- Stats -->
+  <div class="stats-bar" id="statsBar" style="display:none">
+    <div class="stat"><span class="stat-value" id="statTotal">0</span><span class="stat-label">Total Flights</span></div>
+    <div class="stat"><span class="stat-value" id="statStation">0</span><span class="stat-label">Station Delay = Yes</span></div>
+    <div class="stat"><span class="stat-value" id="statBus">0</span><span class="stat-label">Report 1 (Bus delay)</span></div>
+    <div class="stat"><span class="stat-value" id="statBrkDwn">0</span><span class="stat-label">Report 2-A (Breakdown)</span></div>
+    <div class="stat"><span class="stat-value" id="statOther">0</span><span class="stat-label">Report 2-B (Other reasons)</span></div>
+  </div>
+
+  <!-- Reports -->
+  <div class="section-title">② Generate Reports</div>
+
+  <div class="reports-grid">
+
+    <!-- Report 1 -->
+    <div class="report-card">
+      <span class="report-badge">📊 Report 1</span>
+      <h3>Station Delay + Bus Delay</h3>
+      <p>All flights where <em>StationDelay = "Yes"</em> and the delay reason mentions a <strong>shortage / delay of buses</strong>.</p>
+      <button class="btn-generate" id="btn1" disabled onclick="generateReport1()">
+        <span class="btn-icon">⬇</span> Download Report 1
+      </button>
+    </div>
+
+    <!-- Report 2 -->
+    <div class="report-card">
+      <span class="report-badge">📊 Report 2</span>
+      <h3>Station Delay – Breakdown vs Other</h3>
+      <p>
+        <strong>Sheet 1:</strong> Station Delay = Yes + breakdown reason (BRK DWN / BREAK DOWN / conveyor / belt / loader).<br/>
+        <strong>Sheet 2:</strong> Station Delay = Yes + any other reason not covered above.
+      </p>
+      <button class="btn-generate" id="btn2" disabled onclick="generateReport2()">
+        <span class="btn-icon">⬇</span> Download Report 2
+      </button>
+    </div>
+
+  </div>
+
+  <!-- Log -->
+  <div id="log"></div>
+
+</main>
+
+<footer>Flight Delay Report Generator · works entirely in your browser · no data is uploaded anywhere</footer>
+
+<script>
+// ─────────────────────────────────────────────
+//  State
+// ─────────────────────────────────────────────
+let parsedFlights = [];   // flat array: one object per Detail row
+
+// ─────────────────────────────────────────────
+//  Drag & drop styling
+// ─────────────────────────────────────────────
+const dropzone = document.getElementById('dropzone');
+dropzone.addEventListener('dragover', e => { e.preventDefault(); dropzone.classList.add('drag'); });
+dropzone.addEventListener('dragleave', () => dropzone.classList.remove('drag'));
+dropzone.addEventListener('drop', e => {
+  e.preventDefault();
+  dropzone.classList.remove('drag');
+  const file = e.dataTransfer.files[0];
+  if (file) processFile(file);
+});
+
+document.getElementById('xmlInput').addEventListener('change', e => {
+  if (e.target.files[0]) processFile(e.target.files[0]);
+});
+
+// ─────────────────────────────────────────────
+//  XML parsing
+// ─────────────────────────────────────────────
+function processFile(file) {
+  const status = document.getElementById('fileStatus');
+  status.className = 'file-status';
+  status.textContent = `Reading "${file.name}"…`;
+  parsedFlights = [];
+  disableButtons();
+  clearLog();
+
+  const reader = new FileReader();
+  reader.onload = e => {
+    try {
+      parseXML(e.target.result);
+    } catch(err) {
+      status.className = 'file-status error';
+      status.textContent = '❌ Failed to parse XML: ' + err.message;
+      log('Error: ' + err.message, 'err');
+    }
+  };
+  reader.readAsText(file);
+}
+
+function parseXML(xmlText) {
+  const parser = new DOMParser();
+  const doc = parser.parseFromString(xmlText, 'text/xml');
+
+  const parseErr = doc.querySelector('parsererror');
+  if (parseErr) throw new Error('Invalid XML – ' + parseErr.textContent.slice(0,120));
+
+  const flights = [];
+  const ns = doc.documentElement.namespaceURI;
+
+  // Helper: getAttribute that handles both namespaced and plain
+  function attr(el, name) {
+    return el.getAttribute(name) || '';
+  }
+
+  // Walk every <FSID> node
+  const fsids = doc.querySelectorAll('FSID');
+  log(`Found ${fsids.length} FSID elements`, 'info');
+
+  fsids.forEach(fsid => {
+    // Navigate the nested attribute elements
+    const getVal = (tag) => {
+      const el = fsid.querySelector(tag);
+      return el ? (el.getAttribute(tag) || '') : '';
+    };
+
+    const flightNo   = getVal('DepartureFlightNumber');
+    const sdd        = getVal('SDD');
+    const actualDD   = getVal('ActualDD');
+    const acReg      = getVal('DepartureAircraftRegistration');
+    const opType     = getVal('OperationType2');
+    const std        = getVal('STD2');
+    const atd        = getVal('ATD2');
+    const dest       = getVal('Destination1');
+
+    // Each Detail
+    const details = fsid.querySelectorAll('Detail');
+    details.forEach(det => {
+      const stationDelay = (attr(det, 'StationDelay') || '').trim();
+      const delayCode    = attr(det, 'DelayCode');
+      const delayTime    = attr(det, 'DelayTime');
+      const delayReason  = attr(det, 'DelayReason');
+
+      flights.push({
+        FlightNumber:    flightNo,
+        SDD:             sdd,
+        ActualDD:        actualDD,
+        ACRegistration:  acReg,
+        OperationType:   opType,
+        STD:             std,
+        ATD:             atd,
+        Destination:     dest,
+        DelayCode:       delayCode,
+        StationDelay:    stationDelay,
+        DelayTime:       delayTime,
+        DelayReason:     delayReason.trim(),
+      });
+    });
+  });
+
+  parsedFlights = flights;
+
+  // Stats
+  const stationYes = flights.filter(r => r.StationDelay.toLowerCase() === 'yes');
+  const busList    = filterBus(stationYes);
+  const brkList    = filterBreakdown(stationYes);
+  const otherList  = filterOther(stationYes);
+
+  log(`Total detail rows: ${flights.length}`, 'info');
+  log(`StationDelay=Yes rows: ${stationYes.length}`, 'info');
+  log(`Bus delay rows (Report 1): ${busList.length}`, 'ok');
+  log(`Breakdown rows (Report 2-Sheet1): ${brkList.length}`, 'ok');
+  log(`Other reasons (Report 2-Sheet2): ${otherList.length}`, 'ok');
+
+  // Unique flights for stats
+  const uniqueTotal   = new Set(flights.map(r=>r.FlightNumber+r.SDD)).size;
+  const uniqueStation = new Set(stationYes.map(r=>r.FlightNumber+r.SDD)).size;
+
+  document.getElementById('statTotal').textContent   = uniqueTotal;
+  document.getElementById('statStation').textContent = uniqueStation;
+  document.getElementById('statBus').textContent     = busList.length;
+  document.getElementById('statBrkDwn').textContent  = brkList.length;
+  document.getElementById('statOther').textContent   = otherList.length;
+  document.getElementById('statsBar').style.display  = 'flex';
+
+  const status = document.getElementById('fileStatus');
+  status.className = 'file-status';
+  status.textContent = `✅ Loaded ${flights.length.toLocaleString()} delay rows from ${fsids.length.toLocaleString()} flights`;
+
+  enableButtons();
+}
+
+// ─────────────────────────────────────────────
+//  Filter helpers
+// ─────────────────────────────────────────────
+const BUS_PATTERNS = [
+  /bus/i, /buss/i, /buses/i, /coach/i, /shatei/i, /alshatee/i, /shrtg.*bus/i,
+  /shortage.*bus/i, /shortage of bus/i, /bus.*stuck/i, /bus.*late/i, /bus.*short/i,
+  /crew bus/i, /lack.*bus/i, /no bus/i
+];
+
+const BREAKDOWN_PATTERNS = [
+  /brk\s*dwn/i, /break\s*down/i, /breakdown/i,
+  /belt.*break/i, /loader.*break/i, /conveyor.*break/i,
+  /push.*back.*break/i, /break.*cool/i, /belt.*break/i,
+  /breakdown.*loader/i, /breakdown.*belt/i
+];
+
+function matchesAny(str, patterns) {
+  return patterns.some(p => p.test(str));
+}
+
+function filterBus(rows) {
+  return rows.filter(r => matchesAny(r.DelayReason, BUS_PATTERNS));
+}
+
+function filterBreakdown(rows) {
+  return rows.filter(r => matchesAny(r.DelayReason, BREAKDOWN_PATTERNS));
+}
+
+function filterOther(rows) {
+  return rows.filter(r =>
+    !matchesAny(r.DelayReason, BUS_PATTERNS) &&
+    !matchesAny(r.DelayReason, BREAKDOWN_PATTERNS)
+  );
+}
+
+// ─────────────────────────────────────────────
+//  Excel generation helpers
+// ─────────────────────────────────────────────
+const HEADERS = [
+  'Flight Number', 'SDD', 'Actual DD', 'AC Registration', 'Operation Type',
+  'STD', 'ATD', 'Destination', 'Delay Code', 'Station Delay', 'Delay Time', 'Delay Reason'
+];
+
+const COL_WIDTHS = [16, 12, 12, 18, 18, 8, 8, 14, 12, 14, 12, 55];
+
+function rowToArray(r) {
+  return [
+    r.FlightNumber, r.SDD, r.ActualDD, r.ACRegistration, r.OperationType,
+    r.STD, r.ATD, r.Destination, r.DelayCode, r.StationDelay, r.DelayTime, r.DelayReason
+  ];
+}
+
+function buildSheet(rows) {
+  const data = [HEADERS, ...rows.map(rowToArray)];
+  const ws = XLSX.utils.aoa_to_sheet(data);
+
+  // Column widths
+  ws['!cols'] = COL_WIDTHS.map(w => ({ wch: w }));
+
+  // Freeze top row
+  ws['!freeze'] = { xSplit: 0, ySplit: 1 };
+
+  // Style header row (basic)
+  const range = XLSX.utils.decode_range(ws['!ref']);
+  for (let c = range.s.c; c <= range.e.c; c++) {
+    const addr = XLSX.utils.encode_cell({ r: 0, c });
+    if (!ws[addr]) continue;
+    ws[addr].s = {
+      font: { bold: true, color: { rgb: 'FFFFFF' } },
+      fill: { fgColor: { rgb: '0B1F3A' } },
+      alignment: { horizontal: 'center', vertical: 'center', wrapText: true }
+    };
+  }
+
+  // Auto-filter
+  ws['!autofilter'] = { ref: ws['!ref'] };
+
+  return ws;
+}
+
+function styleDataRows(ws, rows) {
+  // Alternating row shading
+  const palette = ['FFFFFF', 'EBF5FB'];
+  for (let r = 1; r <= rows.length; r++) {
+    const fill = { fgColor: { rgb: palette[r % 2] } };
+    for (let c = 0; c < HEADERS.length; c++) {
+      const addr = XLSX.utils.encode_cell({ r, c });
+      if (!ws[addr]) ws[addr] = { v: '', t: 's' };
+      ws[addr].s = { fill, alignment: { vertical: 'center', wrapText: false } };
+    }
+  }
+  return ws;
+}
+
+function downloadWB(wb, filename) {
+  XLSX.writeFile(wb, filename, { bookType: 'xlsx', type: 'binary' });
+}
+
+// ─────────────────────────────────────────────
+//  Report 1
+// ─────────────────────────────────────────────
+function generateReport1() {
+  const stationYes = parsedFlights.filter(r => r.StationDelay.toLowerCase() === 'yes');
+  const busRows    = filterBus(stationYes);
+
+  log(`Report 1: ${busRows.length} rows matched (StationDelay=Yes + Bus)`, 'info');
+
+  const ws = buildSheet(busRows);
+  styleDataRows(ws, busRows);
+
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Bus Delays');
+
+  const today = new Date().toISOString().slice(0,10);
+  downloadWB(wb, `Report1_BusDelays_${today}.xlsx`);
+  log('Report 1 downloaded ✅', 'ok');
+}
+
+// ─────────────────────────────────────────────
+//  Report 2
+// ─────────────────────────────────────────────
+function generateReport2() {
+  const stationYes = parsedFlights.filter(r => r.StationDelay.toLowerCase() === 'yes');
+  const brkRows    = filterBreakdown(stationYes);
+  const otherRows  = filterOther(stationYes);
+
+  log(`Report 2 – Sheet 1 (Breakdown): ${brkRows.length} rows`, 'info');
+  log(`Report 2 – Sheet 2 (Other):     ${otherRows.length} rows`, 'info');
+
+  const ws1 = buildSheet(brkRows);
+  const ws2 = buildSheet(otherRows);
+  styleDataRows(ws1, brkRows);
+  styleDataRows(ws2, otherRows);
+
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws1, 'Breakdown');
+  XLSX.utils.book_append_sheet(wb, ws2, 'Other Reasons');
+
+  const today = new Date().toISOString().slice(0,10);
+  downloadWB(wb, `Report2_BreakdownAndOther_${today}.xlsx`);
+  log('Report 2 downloaded ✅', 'ok');
+}
+
+// ─────────────────────────────────────────────
+//  UI helpers
+// ─────────────────────────────────────────────
+function enableButtons() {
+  document.getElementById('btn1').disabled = false;
+  document.getElementById('btn2').disabled = false;
+}
+function disableButtons() {
+  document.getElementById('btn1').disabled = true;
+  document.getElementById('btn2').disabled = true;
+}
+
+function log(msg, type = 'info') {
+  const el = document.getElementById('log');
+  el.classList.add('visible');
+  const line = document.createElement('div');
+  line.className = type === 'ok' ? 'log-ok' : type === 'err' ? 'log-err' : 'log-info';
+  const time = new Date().toLocaleTimeString();
+  line.textContent = `[${time}] ${msg}`;
+  el.appendChild(line);
+  el.scrollTop = el.scrollHeight;
+}
+
+function clearLog() {
+  const el = document.getElementById('log');
+  el.innerHTML = '';
+  el.classList.remove('visible');
+}
+</script>
+</body>
+</html>

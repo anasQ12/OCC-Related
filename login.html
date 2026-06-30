@@ -1,0 +1,253 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Sign In · Jeddah Airport OPS</title>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <style>
+    :root {
+      --navy:   #0B1F3A;
+      --sky:    #1E6FA8;
+      --ice:    #D6EAF8;
+      --white:  #FFFFFF;
+      --off:    #F0F4F8;
+      --border: #C8D8E8;
+      --text:   #1A2A3A;
+      --muted:  #5A7090;
+      --red:    #C0392B;
+      --green:  #1A7A4A;
+    }
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Segoe UI', Arial, sans-serif;
+      background: var(--navy);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+      position: relative;
+      overflow: hidden;
+    }
+
+    /* subtle runway grid background */
+    body::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background-image:
+        linear-gradient(rgba(30,111,168,.07) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(30,111,168,.07) 1px, transparent 1px);
+      background-size: 48px 48px;
+      pointer-events: none;
+    }
+
+    /* glowing accent blob */
+    body::after {
+      content: '';
+      position: absolute;
+      top: -120px; right: -120px;
+      width: 480px; height: 480px;
+      background: radial-gradient(circle, rgba(30,111,168,.18) 0%, transparent 70%);
+      pointer-events: none;
+    }
+
+    .card {
+      background: var(--white);
+      border-radius: 16px;
+      width: 100%;
+      max-width: 420px;
+      padding: 44px 40px 36px;
+      box-shadow: 0 24px 64px rgba(0,0,0,.35);
+      position: relative;
+      z-index: 1;
+    }
+
+    /* logo / wordmark */
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 32px;
+    }
+    .brand-icon {
+      width: 44px; height: 44px;
+      background: linear-gradient(135deg, var(--sky), var(--navy));
+      border-radius: 10px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 1.3rem; flex-shrink: 0;
+    }
+    .brand-text { line-height: 1.2; }
+    .brand-text strong { display: block; font-size: 1rem; font-weight: 800; color: var(--navy); letter-spacing: .2px; }
+    .brand-text span   { font-size: .75rem; color: var(--muted); }
+
+    h1 { font-size: 1.35rem; font-weight: 700; color: var(--navy); margin-bottom: 6px; }
+    .subtitle { font-size: .85rem; color: var(--muted); margin-bottom: 28px; }
+
+    .field { margin-bottom: 18px; }
+    label { display: block; font-size: .8rem; font-weight: 600; color: var(--text); margin-bottom: 6px; letter-spacing: .2px; }
+
+    .input-wrap { position: relative; }
+    .input-icon {
+      position: absolute; left: 13px; top: 50%; transform: translateY(-50%);
+      font-size: .95rem; pointer-events: none; color: var(--muted);
+    }
+    input {
+      width: 100%; padding: 11px 13px 11px 38px;
+      border: 1.5px solid var(--border); border-radius: 8px;
+      font-size: .92rem; color: var(--text);
+      background: var(--off);
+      transition: border-color .2s, box-shadow .2s;
+      outline: none;
+    }
+    input:focus { border-color: var(--sky); box-shadow: 0 0 0 3px rgba(30,111,168,.12); background: white; }
+    input::placeholder { color: #AAB8C8; }
+
+    .eye-btn {
+      position: absolute; right: 12px; top: 50%; transform: translateY(-50%);
+      background: none; border: none; cursor: pointer; color: var(--muted);
+      font-size: .9rem; padding: 2px 4px;
+      transition: color .15s;
+    }
+    .eye-btn:hover { color: var(--sky); }
+
+    .error-msg {
+      background: #FDEDEC; border: 1px solid #F5B7B1;
+      color: var(--red); border-radius: 6px;
+      padding: 10px 14px; font-size: .82rem; font-weight: 500;
+      margin-bottom: 16px; display: none;
+    }
+    .error-msg.show { display: block; }
+
+    .btn-signin {
+      width: 100%; padding: 12px;
+      background: linear-gradient(135deg, var(--sky), var(--navy));
+      color: white; border: none; border-radius: 8px;
+      font-size: .95rem; font-weight: 700; cursor: pointer;
+      transition: opacity .2s, transform .15s;
+      display: flex; align-items: center; justify-content: center; gap: 8px;
+      margin-top: 4px;
+    }
+    .btn-signin:hover:not(:disabled) { opacity: .88; transform: translateY(-1px); }
+    .btn-signin:disabled { opacity: .55; cursor: not-allowed; transform: none; }
+
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .spinner {
+      width: 15px; height: 15px;
+      border: 2px solid rgba(255,255,255,.4);
+      border-top-color: white; border-radius: 50%;
+      animation: spin .7s linear infinite;
+    }
+
+    .footer-note {
+      margin-top: 24px; text-align: center;
+      font-size: .75rem; color: var(--muted);
+    }
+  </style>
+</head>
+<body>
+
+<div class="card">
+  <div class="brand">
+    <div class="brand-icon">✈</div>
+    <div class="brand-text">
+      <strong>JEDDAH AIRPORT OPS</strong>
+      <span>Operations Portal</span>
+    </div>
+  </div>
+
+  <h1>Welcome back</h1>
+  <p class="subtitle">Sign in with your payroll number and password</p>
+
+  <div class="error-msg" id="errorMsg"></div>
+
+  <div class="field">
+    <label for="payroll">Payroll Number</label>
+    <div class="input-wrap">
+      <span class="input-icon">🪪</span>
+      <input type="text" id="payroll" placeholder="150XXXXX" autocomplete="username" spellcheck="false" />
+    </div>
+  </div>
+
+  <div class="field">
+    <label for="password">Password</label>
+    <div class="input-wrap">
+      <span class="input-icon">🔒</span>
+      <input type="password" id="password" placeholder="Enter your password" autocomplete="current-password" />
+      <button class="eye-btn" type="button" onclick="togglePw()" id="eyeBtn" title="Show/hide password">👁</button>
+    </div>
+  </div>
+
+  <button class="btn-signin" id="signinBtn" onclick="signIn()">Sign In</button>
+
+  <p class="footer-note">Contact your supervisor if you need access</p>
+</div>
+
+<script>
+// ── Supabase config — replace with your project values ──
+const SUPABASE_URL    = 'https://ypwskjjkwnchxwiordqd.supabase.co';
+const SUPABASE_ANON   = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inlwd3Nramprd25jaHh3aW9yZHFkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODI3MTA0MzQsImV4cCI6MjA5ODI4NjQzNH0.0HKlBWg2O0WuOat2deWpB_9baFr7JGFTZcHzEga86Kw';
+const { createClient } = supabase;
+const sb = createClient(SUPABASE_URL, SUPABASE_ANON);
+
+// Redirect if already logged in
+(async () => {
+  const { data: { session } } = await sb.auth.getSession();
+  if (session) window.location.replace('dashboard.html');
+})();
+
+function payrollToEmail(p) {
+  return p.trim().toLowerCase() + '@jedops.com';
+}
+
+async function signIn() {
+  const payroll  = document.getElementById('payroll').value.trim();
+  const password = document.getElementById('password').value;
+  const btn      = document.getElementById('signinBtn');
+  const errEl    = document.getElementById('errorMsg');
+
+  errEl.classList.remove('show');
+
+  if (!payroll) return showError('Please enter your payroll number.');
+  if (!password) return showError('Please enter your password.');
+
+  btn.disabled = true;
+  btn.innerHTML = '<div class="spinner"></div> Signing in…';
+
+  const { data, error } = await sb.auth.signInWithPassword({
+    email:    payrollToEmail(payroll),
+    password: password
+  });
+
+  if (error) {
+    btn.disabled = false;
+    btn.innerHTML = 'Sign In';
+    return showError('Incorrect payroll number or password. Please try again.');
+  }
+
+  window.location.replace('dashboard.html');
+}
+
+function showError(msg) {
+  const el = document.getElementById('errorMsg');
+  el.textContent = msg;
+  el.classList.add('show');
+}
+
+function togglePw() {
+  const inp = document.getElementById('password');
+  const btn = document.getElementById('eyeBtn');
+  if (inp.type === 'password') { inp.type = 'text'; btn.textContent = '🙈'; }
+  else                          { inp.type = 'password'; btn.textContent = '👁'; }
+}
+
+// Allow Enter key
+document.addEventListener('keydown', e => {
+  if (e.key === 'Enter') signIn();
+});
+</script>
+</body>
+</html>

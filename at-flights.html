@@ -1,0 +1,480 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AT Flights · Royal Air Maroc Schedule</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+  <style>
+    :root {
+      --navy:#0B1F3A; --sky:#1E6FA8; --ice:#D6EAF8;
+      --green:#1A7A4A; --red:#C0392B; --amber:#B7770D; --amber-bg:#FEF3CD;
+      --white:#FFFFFF; --off:#F4F7FA; --border:#C8D8E8; --text:#1A2A3A; --muted:#5A7090;
+    }
+    *,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
+    body{font-family:'Segoe UI',Arial,sans-serif;background:var(--off);color:var(--text);min-height:100vh;}
+
+    nav{background:var(--navy);padding:0 40px;display:flex;gap:24px;align-items:center;height:56px;flex-wrap:wrap;}
+    nav a{color:rgba(255,255,255,.65);text-decoration:none;font-size:.83rem;font-weight:600;padding:5px 0;border-bottom:2px solid transparent;}
+    nav a:hover{color:white;}
+    nav a.active{color:white;border-bottom-color:var(--sky);}
+    .nav-logo{color:white;font-size:.95rem;font-weight:800;margin-right:auto;letter-spacing:.5px;}
+
+    header{background:linear-gradient(135deg,var(--navy) 0%,#1A4A7A 100%);padding:26px 40px 22px;box-shadow:0 3px 12px rgba(0,0,0,.22);}
+    header h1{color:var(--white);font-size:1.45rem;font-weight:700;}
+    header p{color:var(--ice);font-size:.83rem;margin-top:3px;}
+
+    main{max-width:1150px;margin:0 auto;padding:36px 24px 70px;}
+
+    .section-title{font-size:.95rem;font-weight:700;color:var(--navy);margin:32px 0 14px;display:flex;align-items:center;gap:10px;}
+    .section-title::after{content:'';flex:1;height:1px;background:var(--border);}
+
+    /* ── Timezone toggle ── */
+    .tz-toggle-card{
+      background:var(--white);border:1.5px solid var(--border);border-radius:12px;
+      padding:18px 22px;margin-bottom:20px;
+    }
+    .tz-toggle-label{font-size:.85rem;font-weight:700;color:var(--navy);margin-bottom:12px;display:flex;align-items:center;gap:8px;}
+    .tz-options{display:flex;gap:12px;}
+    .tz-option{
+      flex:1;padding:14px 16px;border:2px solid var(--border);border-radius:10px;
+      cursor:pointer;transition:border-color .2s,background .2s;text-align:center;
+      display:flex;flex-direction:column;align-items:center;gap:4px;
+    }
+    .tz-option.selected{border-color:var(--sky);background:var(--ice);}
+    .tz-option-icon{font-size:1.4rem;}
+    .tz-option-title{font-size:.86rem;font-weight:700;color:var(--navy);}
+    .tz-option-desc{font-size:.74rem;color:var(--muted);}
+    .tz-option input{display:none;}
+
+    .upload-card{background:var(--white);border:2px dashed var(--border);border-radius:12px;padding:36px 32px;text-align:center;cursor:pointer;position:relative;transition:border-color .2s,background .2s;}
+    .upload-card.drag{border-color:var(--sky);background:var(--ice);}
+    .upload-card input[type=file]{position:absolute;inset:0;opacity:0;cursor:pointer;width:100%;height:100%;}
+    .upload-icon{font-size:2.6rem;margin-bottom:10px;}
+    .upload-card h2{font-size:1rem;color:var(--navy);margin-bottom:5px;}
+    .upload-card p{font-size:.83rem;color:var(--muted);}
+    .file-status{margin-top:12px;font-size:.85rem;font-weight:600;color:var(--green);min-height:18px;}
+    .file-status.error{color:var(--red);}
+
+    .note-box{
+      background:#EAF6FF;border:1px solid #90C8F0;border-radius:8px;
+      padding:10px 16px;font-size:.8rem;color:#0C447C;margin-bottom:18px;
+      display:flex;gap:10px;align-items:flex-start;
+    }
+
+    .stats-bar{display:flex;gap:14px;flex-wrap:wrap;margin-top:20px;}
+    .stat{background:var(--white);border:1px solid var(--border);border-radius:8px;padding:12px 18px;min-width:130px;}
+    .stat-value{font-size:1.6rem;font-weight:800;color:var(--sky);}
+    .stat-label{font-size:.73rem;color:var(--muted);margin-top:2px;text-transform:uppercase;letter-spacing:.5px;}
+    .stat-value.warn{color:var(--amber);}
+
+    .table-wrap{overflow-x:auto;border:1px solid var(--border);border-radius:10px;margin-top:4px;}
+    .preview-tbl{width:100%;border-collapse:collapse;font-size:.8rem;}
+    .preview-tbl th{padding:9px 12px;text-align:left;font-weight:700;font-size:.72rem;text-transform:uppercase;letter-spacing:.5px;white-space:nowrap;background:#1E6FA8;color:white;}
+    .preview-tbl td{padding:8px 12px;border-bottom:1px solid #EEF3F8;white-space:nowrap;}
+    .preview-tbl tr:nth-child(even) td{background:#F8FBFF;}
+    .flt{font-family:monospace;font-weight:600;}
+    .time{font-family:monospace;color:var(--navy);}
+    .badge-next{background:#FEF3CD;color:#8B6914;font-size:.65rem;font-weight:700;padding:1px 6px;border-radius:10px;}
+    .badge-skip{background:#EEF3F8;color:var(--muted);font-size:.65rem;font-weight:700;padding:1px 6px;border-radius:10px;}
+
+    .btn-wrap{margin-top:28px;display:flex;gap:14px;flex-wrap:wrap;align-items:center;}
+    .btn-dl{padding:11px 28px;background:linear-gradient(135deg,var(--sky),var(--navy));color:white;border:none;border-radius:7px;font-size:.9rem;font-weight:700;cursor:pointer;display:flex;align-items:center;gap:8px;transition:opacity .2s,transform .15s;box-shadow:0 2px 8px rgba(30,111,168,.25);}
+    .btn-dl:hover:not(:disabled){opacity:.88;transform:translateY(-1px);}
+    .btn-dl:disabled{opacity:.4;cursor:not-allowed;}
+    .btn-count{font-size:.8rem;color:var(--muted);align-self:center;}
+
+    #log{margin-top:22px;background:var(--navy);color:#B8D8F0;border-radius:8px;padding:14px 18px;font-size:.79rem;font-family:'Courier New',monospace;max-height:170px;overflow-y:auto;display:none;line-height:1.65;}
+    #log.visible{display:block;}
+    .log-ok{color:#7FD4A0;} .log-err{color:#F5A5A0;} .log-info{color:#9FC8E8;} .log-warn{color:#FFD580;}
+
+    footer{text-align:center;padding:18px;font-size:.75rem;color:var(--muted);}
+
+    @media (max-width:680px){header{padding:20px;}nav{padding:10px 16px;gap:14px;}.tz-options{flex-direction:column;}}
+  </style>
+</head>
+<body>
+<nav style="background:#0B1F3A;padding:0 40px;display:flex;gap:24px;align-items:center;height:56px;flex-wrap:wrap;">
+  <span style="color:white;font-size:.95rem;font-weight:800;margin-right:auto;letter-spacing:.5px;">✈ JEDDAH OPS</span>
+  <a href="dashboard.html" style="color:rgba(255,255,255,.65);text-decoration:none;font-size:.83rem;font-weight:600;padding:5px 0;border-bottom:2px solid transparent;">Dashboard</a>
+  <a href="index.html" style="color:rgba(255,255,255,.65);text-decoration:none;font-size:.83rem;font-weight:600;padding:5px 0;border-bottom:2px solid transparent;">Delay Reports</a>
+  <a href="totals.html" style="color:rgba(255,255,255,.65);text-decoration:none;font-size:.83rem;font-weight:600;padding:5px 0;border-bottom:2px solid transparent;">Movement Totals</a>
+  <a href="schedule.html" style="color:rgba(255,255,255,.65);text-decoration:none;font-size:.83rem;font-weight:600;padding:5px 0;border-bottom:2px solid transparent;">Daily Schedule</a>
+  <a href="ms-schedule.html" style="color:rgba(255,255,255,.65);text-decoration:none;font-size:.83rem;font-weight:600;padding:5px 0;border-bottom:2px solid transparent;">MS Schedule</a>
+  <a href="iy-flights.html" style="color:rgba(255,255,255,.65);text-decoration:none;font-size:.83rem;font-weight:600;padding:5px 0;border-bottom:2px solid transparent;">IY Flights</a>
+  <a href="garuda-flights.html" style="color:rgba(255,255,255,.65);text-decoration:none;font-size:.83rem;font-weight:600;padding:5px 0;border-bottom:2px solid transparent;">Garuda Flights</a>
+  <a href="ah-flights.html" style="color:rgba(255,255,255,.65);text-decoration:none;font-size:.83rem;font-weight:600;padding:5px 0;border-bottom:2px solid transparent;">AH Flights</a>
+  <a href="at-flights.html" style="color:white;text-decoration:none;font-size:.83rem;font-weight:600;padding:5px 0;border-bottom:2px solid #1E6FA8;">AT Flights</a>
+  <a href="sm-flights.html" style="color:rgba(255,255,255,.65);text-decoration:none;font-size:.83rem;font-weight:600;padding:5px 0;border-bottom:2px solid transparent;">SM Flights</a>
+  <a href="admin.html" id="navAdmin" style="color:rgba(255,255,255,.65);text-decoration:none;font-size:.83rem;font-weight:600;padding:5px 0;border-bottom:2px solid transparent;display:none;">Admin</a>
+  <button onclick="signOutNav()" style="background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.15);color:white;padding:6px 14px;border-radius:6px;font-size:.8rem;font-weight:600;cursor:pointer;">Sign out</button>
+</nav>
+<script>
+(async () => {
+  const _sb = supabase.createClient("https://ypwskjjkwnchxwiordqd.supabase.co", "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inlwd3Nramprd25jaHh3aW9yZHFkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODI3MTA0MzQsImV4cCI6MjA5ODI4NjQzNH0.0HKlBWg2O0WuOat2deWpB_9baFr7JGFTZcHzEga86Kw");
+  const { data: { session } } = await _sb.auth.getSession();
+  if (!session) { window.location.replace("login.html"); return; }
+  const { data: profile } = await _sb.from("profiles").select("role").eq("id", session.user.id).single();
+  if (profile?.role === "superadmin") {
+    document.getElementById("navAdmin").style.display = "";
+  }
+})();
+async function signOutNav() {
+  const _sb = supabase.createClient("https://ypwskjjkwnchxwiordqd.supabase.co", "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inlwd3Nramprd25jaHh3aW9yZHFkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODI3MTA0MzQsImV4cCI6MjA5ODI4NjQzNH0.0HKlBWg2O0WuOat2deWpB_9baFr7JGFTZcHzEga86Kw");
+  await _sb.auth.signOut();
+  window.location.replace("login.html");
+}
+</script>
+
+<header>
+  <h1>🇲🇦 Royal Air Maroc (AT) Schedule Generator</h1>
+  <p>Upload the AT Excel schedule · choose the source timezone · system-ready CSV</p>
+</header>
+
+<main>
+
+  <div class="section-title">① Confirm Source Timezone</div>
+
+  <div class="tz-toggle-card">
+    <div class="tz-toggle-label">⏱ Are the times in this schedule already in UTC, or local time?</div>
+    <div class="tz-options">
+      <label class="tz-option" id="tzOptUTC" onclick="selectTZ('utc')">
+        <input type="radio" name="tz" value="utc">
+        <div class="tz-option-icon">🌐</div>
+        <div class="tz-option-title">Already UTC</div>
+        <div class="tz-option-desc">No conversion needed — use times as-is</div>
+      </label>
+      <label class="tz-option selected" id="tzOptLocal" onclick="selectTZ('local')">
+        <input type="radio" name="tz" value="local" checked>
+        <div class="tz-option-icon">🕐</div>
+        <div class="tz-option-title">Local Time (UTC+3)</div>
+        <div class="tz-option-desc">Subtract 3 hours to convert to UTC</div>
+      </label>
+    </div>
+  </div>
+
+  <div class="section-title">② Upload AT Schedule (.xlsx)</div>
+
+  <div class="upload-card" id="dropzone">
+    <input type="file" id="fileInput" accept=".xlsx,.xls" />
+    <div class="upload-icon">📊</div>
+    <h2>Drop the AT schedule Excel file here, or click to browse</h2>
+    <p>Expected columns: Date, Arrival, Departure, From, To, ARV TIME, DEP TIME, A/C Type</p>
+    <div class="file-status" id="fileStatus"></div>
+  </div>
+
+  <div id="previewSection" style="display:none">
+    <div class="stats-bar">
+      <div class="stat"><div class="stat-value" id="statRows">0</div><div class="stat-label">TurnAround Pairs</div></div>
+      <div class="stat"><div class="stat-value" id="statDates" style="font-size:1rem;padding-top:4px">—</div><div class="stat-label">Date Range</div></div>
+      <div class="stat"><div class="stat-value" id="statOvernight" style="color:#B7770D">0</div><div class="stat-label">Overnight (+1)</div></div>
+      <div class="stat"><div class="stat-value warn" id="statSkipped">0</div><div class="stat-label">No-flight days skipped</div></div>
+    </div>
+
+    <div class="section-title" style="margin-top:24px">③ Preview</div>
+    <div class="table-wrap">
+      <table class="preview-tbl">
+        <thead>
+          <tr>
+            <th>#</th><th>Arr Flt</th><th>Dep Flt</th><th>AC Type</th>
+            <th>Origin</th><th>Dest</th><th>STA (UTC)</th><th>STD (UTC)</th>
+            <th>SDA</th><th>SDD</th>
+          </tr>
+        </thead>
+        <tbody id="previewBody"></tbody>
+      </table>
+    </div>
+
+    <div class="section-title">④ Download CSV</div>
+    <div class="btn-wrap">
+      <button class="btn-dl" id="btnDl" onclick="downloadCSV()">⬇ Download CSV for System Upload</button>
+      <span class="btn-count" id="btnCount"></span>
+    </div>
+  </div>
+
+  <div id="log"></div>
+</main>
+
+<footer>Royal Air Maroc Schedule Generator · runs entirely in your browser · no data uploaded anywhere</footer>
+
+<script>
+let pairedRows = [];
+let selectedTZ = 'local'; // 'utc' | 'local'
+
+function selectTZ(tz) {
+  selectedTZ = tz;
+  document.getElementById('tzOptUTC').className   = 'tz-option' + (tz==='utc'   ? ' selected' : '');
+  document.getElementById('tzOptLocal').className = 'tz-option' + (tz==='local' ? ' selected' : '');
+  document.querySelector(`input[value="${tz}"]`).checked = true;
+}
+
+// ── AC type passthrough ──
+function mapAC(raw) {
+  return String(raw||'').trim().toUpperCase() || 'B787';
+}
+
+// ── Date helpers ──
+function fmtDate(d) { const mm=String(d.getMonth()+1).padStart(2,'0'); const dd=String(d.getDate()).padStart(2,'0'); return `${mm}/${dd}/${d.getFullYear()}`; }
+function addDays(d, n) { const x = new Date(d); x.setDate(x.getDate()+n); return x; }
+
+// ── Local (UTC+3) -> UTC conversion ──
+function localToUTC(dateObj, h, m) {
+  const local = new Date(dateObj.getFullYear(), dateObj.getMonth(), dateObj.getDate(), h, m);
+  const utc = new Date(local.getTime() - 3*60*60*1000);
+  const hhmm = utc.getHours().toString().padStart(2,'0') + utc.getMinutes().toString().padStart(2,'0');
+  const utcDate = new Date(utc.getFullYear(), utc.getMonth(), utc.getDate());
+  return { date: utcDate, hhmm };
+}
+
+// ── If already UTC, just pass through (no time-shift) ──
+function asUTC(dateObj, h, m) {
+  const hhmm = h.toString().padStart(2,'0') + m.toString().padStart(2,'0');
+  return { date: new Date(dateObj.getFullYear(), dateObj.getMonth(), dateObj.getDate()), hhmm };
+}
+
+// ── Flexible date parser: handles real Date objects, "DD/M/YY", "DD/MM/YYYY" ──
+function parseFlexibleDate(val) {
+  if (val === null || val === undefined || val === '') return null;
+  if (val instanceof Date && !isNaN(val.getTime())) {
+    return new Date(val.getFullYear(), val.getMonth(), val.getDate());
+  }
+  if (typeof val === 'number') {
+    const d = new Date(Math.round((val - 25569) * 86400 * 1000));
+    if (!isNaN(d.getTime())) return new Date(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate());
+    return null;
+  }
+  if (typeof val === 'string') {
+    const s = val.trim();
+    const m = s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})$/);
+    if (m) {
+      const day = parseInt(m[1], 10);
+      const mon = parseInt(m[2], 10) - 1;
+      let yr = parseInt(m[3], 10);
+      if (yr < 100) yr += 2000;
+      const d = new Date(yr, mon, day);
+      if (!isNaN(d.getTime())) return d;
+    }
+    const native = new Date(s);
+    if (!isNaN(native.getTime())) return new Date(native.getFullYear(), native.getMonth(), native.getDate());
+  }
+  return null;
+}
+
+// ── Parse a time cell: Excel time fraction/Date, or string ──
+function parseTimeCell(val) {
+  if (val === null || val === undefined || val === '') return null;
+  if (val instanceof Date) {
+    return { h: val.getHours(), m: val.getMinutes() };
+  }
+  if (typeof val === 'number') {
+    const totalMins = Math.round(val * 24 * 60);
+    return { h: Math.floor(totalMins/60) % 24, m: totalMins % 60 };
+  }
+  if (typeof val === 'string') {
+    const m = val.trim().match(/^(\d{1,2}):(\d{2})/);
+    if (m) return { h: parseInt(m[1],10), m: parseInt(m[2],10) };
+  }
+  return null;
+}
+
+// ── Detect overnight: departure earlier than arrival on same nominal day ──
+function inferOvernight(staH, staM, stdH, stdM) {
+  const staMins = staH*60 + staM;
+  const stdMins = stdH*60 + stdM;
+  return stdMins < staMins ? 1 : 0;
+}
+
+// ── Drop & file handling ──
+const dz = document.getElementById('dropzone');
+dz.addEventListener('dragover',  e => { e.preventDefault(); dz.classList.add('drag'); });
+dz.addEventListener('dragleave', () => dz.classList.remove('drag'));
+dz.addEventListener('drop', e => { e.preventDefault(); dz.classList.remove('drag'); if(e.dataTransfer.files[0]) processFile(e.dataTransfer.files[0]); });
+document.getElementById('fileInput').addEventListener('change', e => { if(e.target.files[0]) processFile(e.target.files[0]); });
+
+function processFile(file) {
+  const st = document.getElementById('fileStatus');
+  st.className = 'file-status';
+  st.textContent = `Reading "${file.name}"…`;
+  pairedRows = [];
+  clearLog();
+  const reader = new FileReader();
+  reader.onload = e => {
+    try { parseXLSX(e.target.result); }
+    catch(err) { st.className='file-status error'; st.textContent='❌ '+err.message; logLine('Error: '+err.message,'err'); }
+  };
+  reader.readAsArrayBuffer(file);
+}
+
+function parseXLSX(buffer) {
+  const wb = XLSX.read(buffer, { type:'array', cellDates:true });
+  const ws = wb.Sheets[wb.SheetNames[0]];
+  const raw = XLSX.utils.sheet_to_json(ws, { header:1, raw:false, defval:null });
+
+  // Find header row (contains "Date" and "Arrival")
+  let headerRowIdx = -1;
+  for (let i = 0; i < Math.min(raw.length, 5); i++) {
+    if (raw[i] && raw[i].some(c => c && String(c).toUpperCase() === 'DATE') &&
+        raw[i].some(c => c && String(c).toUpperCase() === 'ARRIVAL')) {
+      headerRowIdx = i;
+      break;
+    }
+  }
+  if (headerRowIdx === -1) headerRowIdx = 0;
+
+  const out = [];
+  let skipped = 0;
+  let errors = 0;
+  const convertFn = selectedTZ === 'local' ? localToUTC : asUTC;
+
+  logLine(`Timezone mode: ${selectedTZ === 'local' ? 'Local (UTC+3) — converting' : 'Already UTC — no shift'}`, 'info');
+
+  for (let i = headerRowIdx + 1; i < raw.length; i++) {
+    const row = raw[i];
+    if (!row) continue;
+
+    // Columns: Date, Arrival, Departure, From, To, ARV TIME, DEP TIME, A/C Type
+    const dateCell = row[0];
+    const arrFlt   = row[1];
+    const depFlt   = row[2];
+    const origin   = row[3];
+    const dest     = row[4];
+    const sta      = row[5];
+    const std      = row[6];
+    const actype   = row[7];
+
+    if (!dateCell) continue;
+
+    // Skip "-" placeholder rows (no flight that day)
+    const isDash = [arrFlt, depFlt, origin, dest, sta, std, actype].some(v => String(v||'').trim() === '-');
+    if (isDash || !arrFlt || !depFlt) { skipped++; continue; }
+
+    const currentDate = parseFlexibleDate(dateCell);
+    if (!currentDate) { logLine(`Row ${i+1}: invalid date "${dateCell}"`, 'warn'); errors++; continue; }
+
+    const arrFno = String(arrFlt).trim().replace(/^AT/i,'').trim();
+    const depFno = String(depFlt).trim().replace(/^AT/i,'').trim();
+
+    const staInfo = parseTimeCell(sta);
+    const stdInfo = parseTimeCell(std);
+    if (!staInfo || !stdInfo) { logLine(`Row ${i+1}: could not parse times STA="${sta}" STD="${std}"`, 'warn'); errors++; continue; }
+
+    const stdDayOffset = inferOvernight(staInfo.h, staInfo.m, stdInfo.h, stdInfo.m);
+    const arrLocalDate = currentDate;
+    const depLocalDate = addDays(currentDate, stdDayOffset);
+
+    const arrResult = convertFn(arrLocalDate, staInfo.h, staInfo.m);
+    const depResult = convertFn(depLocalDate, stdInfo.h, stdInfo.m);
+
+    out.push({
+      'Sl.No.':           '',
+      'AirlineCode':      'AT',
+      'ServiceType':      'TurnAround',
+      'SDA':              fmtDate(arrResult.date),
+      'SDD':              fmtDate(depResult.date),
+      'ArrFno':           arrFno,
+      'DepFno':           depFno,
+      'Aircraft':         mapAC(actype),
+      'Aircraft Reg':     '',
+      'Origin1':          (origin||'').toString().trim(),
+      'Origin2':          '',
+      'Dest1':            (dest||'').toString().trim(),
+      'Dest2':            '',
+      'STA':              arrResult.hhmm,
+      'STD':              depResult.hhmm,
+      'ArrivalRemarks':   '',
+      'DepartureRemarks': '',
+      _sda: arrResult.date, _sta: arrResult.hhmm,
+      _overnight: fmtDate(arrResult.date) !== fmtDate(depResult.date)
+    });
+  }
+
+  out.sort((a,b) => {
+    const dt = a._sda - b._sda;
+    if (dt !== 0) return dt;
+    return (a._sta||'').localeCompare(b._sta||'');
+  });
+  out.forEach((r,i) => r['Sl.No.'] = String(i+1));
+
+  pairedRows = out;
+
+  logLine(`Parsed ${out.length} valid TurnAround rows`, 'ok');
+  logLine(`Skipped ${skipped} no-flight day(s) (marked "-")`, 'info');
+  if (errors > 0) logLine(`${errors} row(s) had parsing issues — check above`, 'warn');
+
+  updateUI(out, skipped);
+  document.getElementById('fileStatus').textContent = `✅ ${out.length} rows generated · ${skipped} no-flight days skipped`;
+}
+
+function updateUI(rows, skipped) {
+  if (rows.length === 0) {
+    document.getElementById('previewSection').style.display = 'none';
+    return;
+  }
+  const dates = [...new Set([...rows.map(r=>r.SDA), ...rows.map(r=>r.SDD)])].sort((a,b)=>new Date(a)-new Date(b));
+  const overnight = rows.filter(r => r._overnight).length;
+
+  document.getElementById('statRows').textContent      = rows.length;
+  document.getElementById('statDates').textContent     = dates.length > 1 ? `${dates[0]} – ${dates[dates.length-1]}` : dates[0]||'—';
+  document.getElementById('statOvernight').textContent = overnight;
+  document.getElementById('statSkipped').textContent   = skipped;
+
+  const tbody = document.getElementById('previewBody');
+  tbody.innerHTML = '';
+  rows.forEach((r,i) => {
+    const tr = document.createElement('tr');
+    const nextBadge = r._overnight ? ' <span class="badge-next">+1</span>' : '';
+    tr.innerHTML = `
+      <td>${i+1}</td>
+      <td class="flt">AT${r.ArrFno}</td>
+      <td class="flt">AT${r.DepFno}</td>
+      <td>${r.Aircraft}</td>
+      <td>${r.Origin1}</td>
+      <td>${r.Dest1}</td>
+      <td class="time">${r.STA}</td>
+      <td class="time">${r.STD}</td>
+      <td>${r.SDA}</td>
+      <td>${r.SDD}${nextBadge}</td>
+    `;
+    tbody.appendChild(tr);
+  });
+
+  document.getElementById('btnCount').textContent = `${rows.length} rows`;
+  document.getElementById('previewSection').style.display = 'block';
+}
+
+// ── Download CSV ──
+const CSV_HEADERS = ['Sl.No.','AirlineCode','ServiceType','SDA','SDD','ArrFno','DepFno',
+  'Aircraft','Aircraft Reg','Origin1','Origin2','Dest1','Dest2','STA','STD','ArrivalRemarks','DepartureRemarks'];
+
+function escapeCSV(v) {
+  const s = String(v===null||v===undefined?'':v);
+  return (s.includes(',')||s.includes('"')||s.includes('\n')) ? '"'+s.replace(/"/g,'""')+'"' : s;
+}
+
+function downloadCSV() {
+  if (pairedRows.length === 0) { logLine('Nothing to download.', 'err'); return; }
+  const lines = [CSV_HEADERS.join(',')];
+  pairedRows.forEach(r => lines.push(CSV_HEADERS.map(h => escapeCSV(r[h]!==undefined?r[h]:'')).join(',')));
+  const blob = new Blob([lines.join('\r\n')], { type:'text/csv;charset=utf-8;' });
+  const a = document.createElement('a');
+  const date = pairedRows[0]?.SDA?.replace(/\//g,'-') || 'schedule';
+  a.href = URL.createObjectURL(blob);
+  a.download = `AT-Schedule-${date}.csv`;
+  a.click();
+  URL.revokeObjectURL(a.href);
+  logLine(`Downloaded AT-Schedule-${date}.csv (${pairedRows.length} rows) ✅`, 'ok');
+}
+
+function logLine(msg, type) {
+  const el = document.getElementById('log');
+  el.classList.add('visible');
+  const d = document.createElement('div');
+  d.className = type==='ok'?'log-ok':type==='err'?'log-err':type==='warn'?'log-warn':'log-info';
+  d.textContent = `[${new Date().toLocaleTimeString()}] ${msg}`;
+  el.appendChild(d); el.scrollTop = el.scrollHeight;
+}
+function clearLog() { const el=document.getElementById('log'); el.innerHTML=''; el.classList.remove('visible'); }
+</script>
+</body>
+</html>

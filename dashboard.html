@@ -1,0 +1,319 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Dashboard · Jeddah Airport OPS</title>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <style>
+    :root {
+      --navy:   #0B1F3A;
+      --sky:    #1E6FA8;
+      --ice:    #D6EAF8;
+      --white:  #FFFFFF;
+      --off:    #F4F7FA;
+      --border: #C8D8E8;
+      --text:   #1A2A3A;
+      --muted:  #5A7090;
+      --red:    #C0392B;
+      --green:  #1A7A4A;
+      --amber:  #B7770D;
+    }
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: 'Segoe UI', Arial, sans-serif; background: var(--off); color: var(--text); min-height: 100vh; }
+
+    /* ── Nav ── */
+    nav {
+      background: var(--navy); padding: 0 40px;
+      display: flex; align-items: center; height: 56px;
+      box-shadow: 0 2px 8px rgba(0,0,0,.2);
+    }
+    .nav-logo { color: white; font-size: .95rem; font-weight: 800; letter-spacing: .5px; margin-right: auto; display: flex; align-items: center; gap: 10px; }
+    .nav-logo span { background: rgba(255,255,255,.1); padding: 4px 8px; border-radius: 6px; font-size: .75rem; font-weight: 600; color: var(--ice); }
+    .nav-right { display: flex; align-items: center; gap: 16px; }
+    .nav-user { color: var(--ice); font-size: .82rem; }
+    .nav-user strong { color: white; }
+    .btn-signout { background: rgba(255,255,255,.1); border: 1px solid rgba(255,255,255,.15); color: white; padding: 6px 14px; border-radius: 6px; font-size: .8rem; font-weight: 600; cursor: pointer; transition: background .15s; }
+    .btn-signout:hover { background: rgba(255,255,255,.18); }
+
+    /* ── Main ── */
+    main { max-width: 1000px; margin: 0 auto; padding: 40px 24px 60px; }
+
+    .welcome-bar {
+      background: linear-gradient(135deg, var(--navy) 0%, #1A4A7A 100%);
+      border-radius: 14px; padding: 28px 32px;
+      display: flex; align-items: center; justify-content: space-between;
+      margin-bottom: 36px;
+      box-shadow: 0 4px 16px rgba(11,31,58,.25);
+    }
+    .welcome-bar h1 { color: white; font-size: 1.35rem; font-weight: 700; }
+    .welcome-bar p  { color: var(--ice); font-size: .85rem; margin-top: 4px; }
+    .welcome-plane  { font-size: 3rem; opacity: .6; }
+
+    /* ── Section title ── */
+    .section-title { font-size: .8rem; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; color: var(--muted); margin-bottom: 14px; }
+
+    /* ── Tool cards ── */
+    .tools-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 18px; margin-bottom: 40px; }
+
+    .tool-card {
+      background: var(--white); border-radius: 12px; border: 1px solid var(--border);
+      padding: 24px 22px; text-decoration: none; color: var(--text);
+      display: flex; flex-direction: column; gap: 10px;
+      box-shadow: 0 1px 4px rgba(0,0,0,.05);
+      transition: box-shadow .2s, transform .2s;
+    }
+    .tool-card:hover { box-shadow: 0 6px 20px rgba(30,111,168,.15); transform: translateY(-2px); }
+
+    .tool-icon { font-size: 1.8rem; }
+    .tool-tag { display: inline-block; font-size: .68rem; font-weight: 700; text-transform: uppercase; letter-spacing: .8px; padding: 2px 8px; border-radius: 20px; width: fit-content; }
+    .tag-blue   { background: var(--ice); color: var(--sky); }
+    .tag-green  { background: #D5F5E3; color: var(--green); }
+    .tag-amber  { background: #FEF3CD; color: var(--amber); }
+    .tool-card h3 { font-size: .97rem; font-weight: 700; }
+    .tool-card p  { font-size: .81rem; color: var(--muted); line-height: 1.5; flex: 1; }
+    .tool-arrow { color: var(--sky); font-size: .9rem; align-self: flex-end; }
+
+    /* ── Quick actions (admin only) ── */
+    .admin-card {
+      background: var(--white); border-radius: 12px; border: 1.5px solid #F5C6C0;
+      padding: 20px 22px; display: flex; align-items: center; gap: 16px;
+      text-decoration: none; color: var(--text);
+      box-shadow: 0 1px 4px rgba(0,0,0,.05);
+      transition: box-shadow .2s;
+    }
+    .admin-card:hover { box-shadow: 0 4px 16px rgba(192,57,43,.1); }
+    .admin-card-icon { font-size: 1.6rem; }
+    .admin-card h3 { font-size: .92rem; font-weight: 700; }
+    .admin-card p  { font-size: .79rem; color: var(--muted); margin-top: 2px; }
+
+    /* ── Change password section ── */
+    .change-pw-card {
+      background: var(--white); border-radius: 12px; border: 1px solid var(--border);
+      padding: 24px 26px; margin-top: 28px;
+    }
+    .change-pw-card h2 { font-size: .95rem; font-weight: 700; margin-bottom: 18px; display: flex; align-items: center; gap: 8px; }
+    .pw-form { display: flex; flex-direction: column; gap: 14px; max-width: 360px; }
+    .pw-form label { font-size: .78rem; font-weight: 600; display: block; margin-bottom: 5px; }
+    .pw-form input {
+      width: 100%; padding: 9px 12px; border: 1.5px solid var(--border);
+      border-radius: 7px; font-size: .88rem; outline: none; background: var(--off);
+      transition: border-color .2s;
+    }
+    .pw-form input:focus { border-color: var(--sky); background: white; }
+    .btn-pw {
+      padding: 9px 22px; background: var(--sky); color: white;
+      border: none; border-radius: 7px; font-size: .85rem; font-weight: 600;
+      cursor: pointer; transition: opacity .2s; align-self: flex-start; margin-top: 2px;
+    }
+    .btn-pw:hover:not(:disabled) { opacity: .85; }
+    .btn-pw:disabled { opacity: .45; cursor: not-allowed; }
+    .pw-msg { font-size: .8rem; padding: 8px 12px; border-radius: 6px; display: none; }
+    .pw-msg.ok  { background: #D5F5E3; color: var(--green); display: block; }
+    .pw-msg.err { background: #FDEDEC; color: var(--red); display: block; }
+
+    #adminSection { display: none; }
+
+    footer { text-align: center; padding: 18px; font-size: .75rem; color: var(--muted); }
+  </style>
+</head>
+<body>
+
+<nav>
+  <div class="nav-logo">
+    ✈ JEDDAH OPS
+    <span id="roleBadge">Loading…</span>
+  </div>
+  <div class="nav-right">
+    <div class="nav-user">Signed in as <strong id="navName">…</strong></div>
+    <button class="btn-signout" onclick="signOut()">Sign out</button>
+  </div>
+</nav>
+
+<main>
+
+  <!-- Welcome bar -->
+  <div class="welcome-bar">
+    <div>
+      <h1 id="welcomeMsg">Welcome back</h1>
+      <p id="welcomeSub">Jeddah Airport Operations Portal</p>
+    </div>
+    <div class="welcome-plane">✈</div>
+  </div>
+
+  <!-- Tools -->
+  <div class="section-title">Operations Tools</div>
+  <div class="tools-grid">
+
+    <a href="index.html" class="tool-card">
+      <div class="tool-icon">📋</div>
+      <span class="tool-tag tag-blue">Report</span>
+      <h3>Delay Reports</h3>
+      <p>Upload delay XML and generate filtered Excel reports — bus delays, breakdowns, and station delay reasons.</p>
+      <div class="tool-arrow">→</div>
+    </a>
+
+    <a href="totals.html" class="tool-card">
+      <div class="tool-icon">📊</div>
+      <span class="tool-tag tag-green">Report</span>
+      <h3>Flight Movement Totals</h3>
+      <p>Upload movement XML and generate the Flights Summary Report in the official template format.</p>
+      <div class="tool-arrow">→</div>
+    </a>
+
+    <a href="schedule.html" class="tool-card">
+      <div class="tool-icon">🗓</div>
+      <span class="tool-tag tag-amber">Schedule</span>
+      <h3>Daily Schedule Generator</h3>
+      <p>Convert daily ops TXT files into system-ready CSV — extracts JED arrivals and departures automatically.</p>
+      <div class="tool-arrow">→</div>
+    </a>
+
+    <a href="ms-schedule.html" class="tool-card">
+      <div class="tool-icon">🇪🇬</div>
+      <span class="tool-tag tag-amber">Schedule</span>
+      <h3>MS Schedule (EgyptAir)</h3>
+      <p>Convert the EgyptAir Excel schedule into a system-ready CSV — pairs arrivals with departures by aircraft.</p>
+      <div class="tool-arrow">→</div>
+    </a>
+
+    <a href="iy-flights.html" class="tool-card">
+      <div class="tool-icon">🇾🇪</div>
+      <span class="tool-tag tag-amber">Schedule</span>
+      <h3>IY Flights (Yemenia)</h3>
+      <p>Manual entry, Excel upload, or OCR from an image — converts to a system-ready CSV with UTC time conversion.</p>
+      <div class="tool-arrow">→</div>
+    </a>
+
+    <a href="garuda-flights.html" class="tool-card">
+      <div class="tool-icon">🇮🇩</div>
+      <span class="tool-tag tag-amber">Schedule</span>
+      <h3>Garuda Flights</h3>
+      <p>Convert the Garuda Excel schedule into a system-ready CSV — excludes cancelled flights automatically.</p>
+      <div class="tool-arrow">→</div>
+    </a>
+
+    <a href="ah-flights.html" class="tool-card">
+      <div class="tool-icon">🇩🇿</div>
+      <span class="tool-tag tag-amber">Schedule</span>
+      <h3>AH Flights (Air Algerie)</h3>
+      <p>Convert the AH Excel schedule into a system-ready CSV — choose local or UTC source timezone.</p>
+      <div class="tool-arrow">→</div>
+    </a>
+
+    <a href="at-flights.html" class="tool-card">
+      <div class="tool-icon">🇲🇦</div>
+      <span class="tool-tag tag-amber">Schedule</span>
+      <h3>AT Flights (Royal Air Maroc)</h3>
+      <p>Convert the AT Excel schedule into a system-ready CSV — skips no-flight days automatically.</p>
+      <div class="tool-arrow">→</div>
+    </a>
+
+    <a href="sm-flights.html" class="tool-card">
+      <div class="tool-icon">🇪🇬</div>
+      <span class="tool-tag tag-amber">Schedule</span>
+      <h3>SM Flights (Air Cairo)</h3>
+      <p>Convert the SM traffic report into a system-ready CSV — pairs arrival/departure legs by aircraft registration.</p>
+      <div class="tool-arrow">→</div>
+    </a>
+
+  </div>
+
+  <!-- Admin section (superadmin only) -->
+  <div id="adminSection">
+    <div class="section-title">Admin</div>
+    <a href="admin.html" class="admin-card">
+      <div class="admin-card-icon">⚙️</div>
+      <div>
+        <h3>User Management</h3>
+        <p>Add agents, set passwords, manage roles and access</p>
+      </div>
+    </a>
+  </div>
+
+  <!-- Change password -->
+  <div class="change-pw-card">
+    <h2>🔑 Change My Password</h2>
+    <div class="pw-form">
+      <div>
+        <label>New Password</label>
+        <input type="password" id="newPw" placeholder="Minimum 8 characters" />
+      </div>
+      <div>
+        <label>Confirm New Password</label>
+        <input type="password" id="confirmPw" placeholder="Repeat password" />
+      </div>
+      <div class="pw-msg" id="pwMsg"></div>
+      <button class="btn-pw" id="pwBtn" onclick="changePassword()">Update Password</button>
+    </div>
+  </div>
+
+</main>
+
+<footer>Jeddah Airport Operations Portal · internal use only</footer>
+
+<script>
+const SUPABASE_URL  = 'https://ypwskjjkwnchxwiordqd.supabase.co';
+const SUPABASE_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inlwd3Nramprd25jaHh3aW9yZHFkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODI3MTA0MzQsImV4cCI6MjA5ODI4NjQzNH0.0HKlBWg2O0WuOat2deWpB_9baFr7JGFTZcHzEga86Kw';
+const { createClient } = supabase;
+const sb = createClient(SUPABASE_URL, SUPABASE_ANON);
+
+async function init() {
+  const { data: { session } } = await sb.auth.getSession();
+  if (!session) { window.location.replace('login.html'); return; }
+
+  const user = session.user;
+
+  // Fetch profile
+  const { data: profile } = await sb.from('profiles')
+    .select('full_name, payroll_number, role')
+    .eq('id', user.id)
+    .single();
+
+  const name    = profile?.full_name    || profile?.payroll_number || 'Agent';
+  const role    = profile?.role         || 'agent';
+  const payroll = profile?.payroll_number || '';
+
+  document.getElementById('navName').textContent    = name;
+  document.getElementById('welcomeMsg').textContent = `Welcome back, ${name.split(' ')[0]}`;
+  document.getElementById('welcomeSub').textContent = `${payroll} · ${role === 'superadmin' ? 'Super Admin' : 'Agent'}`;
+  document.getElementById('roleBadge').textContent  = role === 'superadmin' ? 'Super Admin' : 'Agent';
+
+  if (role === 'superadmin') {
+    document.getElementById('adminSection').style.display = 'block';
+  }
+}
+
+async function signOut() {
+  await sb.auth.signOut();
+  window.location.replace('login.html');
+}
+
+async function changePassword() {
+  const np  = document.getElementById('newPw').value;
+  const cp  = document.getElementById('confirmPw').value;
+  const msg = document.getElementById('pwMsg');
+  const btn = document.getElementById('pwBtn');
+
+  msg.className = 'pw-msg';
+
+  if (np.length < 8) { msg.textContent = 'Password must be at least 8 characters.'; msg.className = 'pw-msg err'; return; }
+  if (np !== cp)     { msg.textContent = 'Passwords do not match.'; msg.className = 'pw-msg err'; return; }
+
+  btn.disabled = true;
+  const { error } = await sb.auth.updateUser({ password: np });
+  btn.disabled = false;
+
+  if (error) { msg.textContent = 'Failed to update password. Try again.'; msg.className = 'pw-msg err'; }
+  else {
+    msg.textContent = '✅ Password updated successfully.';
+    msg.className = 'pw-msg ok';
+    document.getElementById('newPw').value = '';
+    document.getElementById('confirmPw').value = '';
+  }
+}
+
+init();
+</script>
+</body>
+</html>

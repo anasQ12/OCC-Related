@@ -1,0 +1,433 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>User Management · Jeddah Airport OPS</title>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <style>
+    :root {
+      --navy:   #0B1F3A;
+      --sky:    #1E6FA8;
+      --ice:    #D6EAF8;
+      --white:  #FFFFFF;
+      --off:    #F4F7FA;
+      --border: #C8D8E8;
+      --text:   #1A2A3A;
+      --muted:  #5A7090;
+      --red:    #C0392B;
+      --green:  #1A7A4A;
+    }
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: 'Segoe UI', Arial, sans-serif; background: var(--off); color: var(--text); min-height: 100vh; }
+
+    nav { background: var(--navy); padding: 0 40px; display: flex; align-items: center; height: 56px; gap: 24px; }
+    nav a { color: rgba(255,255,255,.65); text-decoration: none; font-size: .83rem; font-weight: 600; padding: 5px 0; border-bottom: 2px solid transparent; }
+    nav a:hover { color: white; }
+    nav a.active { color: white; border-bottom-color: var(--sky); }
+    .nav-logo { color: white; font-size: .95rem; font-weight: 800; margin-right: auto; letter-spacing: .5px; }
+    .btn-signout { background: rgba(255,255,255,.1); border: 1px solid rgba(255,255,255,.15); color: white; padding: 6px 14px; border-radius: 6px; font-size: .8rem; font-weight: 600; cursor: pointer; margin-left: auto; }
+
+    main { max-width: 900px; margin: 0 auto; padding: 36px 24px 60px; }
+
+    .page-header { margin-bottom: 28px; }
+    .page-header h1 { font-size: 1.3rem; font-weight: 700; }
+    .page-header p  { font-size: .85rem; color: var(--muted); margin-top: 4px; }
+
+    /* ── Add user panel ── */
+    .add-card {
+      background: var(--white); border-radius: 12px; border: 1px solid var(--border);
+      padding: 24px 26px; margin-bottom: 28px;
+      box-shadow: 0 1px 4px rgba(0,0,0,.05);
+    }
+    .add-card h2 { font-size: .95rem; font-weight: 700; margin-bottom: 18px; }
+    .form-row { display: grid; grid-template-columns: 1fr 1fr 1fr auto; gap: 12px; align-items: end; }
+    .form-field label { display: block; font-size: .75rem; font-weight: 600; margin-bottom: 5px; color: var(--text); }
+    .form-field input, .form-field select {
+      width: 100%; padding: 9px 11px; border: 1.5px solid var(--border);
+      border-radius: 7px; font-size: .85rem; background: var(--off); outline: none;
+      transition: border-color .2s;
+    }
+    .form-field input:focus, .form-field select:focus { border-color: var(--sky); background: white; }
+    .btn-add {
+      padding: 9px 20px; background: linear-gradient(135deg, var(--sky), var(--navy));
+      color: white; border: none; border-radius: 7px; font-size: .85rem;
+      font-weight: 700; cursor: pointer; white-space: nowrap; height: 38px;
+      transition: opacity .2s;
+    }
+    .btn-add:hover:not(:disabled) { opacity: .85; }
+    .btn-add:disabled { opacity: .45; cursor: not-allowed; }
+    .add-msg { margin-top: 10px; font-size: .8rem; padding: 8px 12px; border-radius: 6px; display: none; }
+    .add-msg.ok  { background: #D5F5E3; color: var(--green); display: block; }
+    .add-msg.err { background: #FDEDEC; color: var(--red); display: block; }
+
+    /* ── Users table ── */
+    .table-card {
+      background: var(--white); border-radius: 12px; border: 1px solid var(--border);
+      overflow: hidden; box-shadow: 0 1px 4px rgba(0,0,0,.05);
+    }
+    .table-toolbar {
+      padding: 14px 20px; display: flex; align-items: center; justify-content: space-between;
+      border-bottom: 1px solid var(--border);
+    }
+    .table-toolbar h2 { font-size: .9rem; font-weight: 700; }
+    .search-input {
+      padding: 7px 12px; border: 1.5px solid var(--border); border-radius: 7px;
+      font-size: .82rem; width: 220px; outline: none; background: var(--off);
+    }
+    .search-input:focus { border-color: var(--sky); }
+
+    table { width: 100%; border-collapse: collapse; }
+    thead th {
+      background: #F0F5FA; padding: 10px 16px; text-align: left;
+      font-size: .72rem; font-weight: 700; text-transform: uppercase; letter-spacing: .6px;
+      color: var(--muted); border-bottom: 1px solid var(--border);
+    }
+    tbody td { padding: 12px 16px; border-bottom: 1px solid #F0F5FA; font-size: .83rem; }
+    tbody tr:last-child td { border-bottom: none; }
+    tbody tr:hover td { background: #F8FBFF; }
+
+    .badge-role {
+      display: inline-block; padding: 2px 9px; border-radius: 20px;
+      font-size: .68rem; font-weight: 700; text-transform: uppercase; letter-spacing: .6px;
+    }
+    .badge-superadmin { background: #FDEDEC; color: var(--red); }
+    .badge-agent      { background: var(--ice); color: var(--sky); }
+
+    .action-btn {
+      padding: 4px 11px; border-radius: 5px; font-size: .75rem; font-weight: 600;
+      cursor: pointer; border: 1px solid; transition: opacity .15s; margin-right: 4px;
+    }
+    .btn-reset { background: #FEF3CD; border-color: #F0CB5C; color: #7D5C00; }
+    .btn-reset:hover { opacity: .8; }
+    .btn-delete { background: #FDEDEC; border-color: #F5B7B1; color: var(--red); }
+    .btn-delete:hover { opacity: .8; }
+
+    .empty-row td { text-align: center; color: var(--muted); padding: 32px; font-size: .85rem; }
+
+    /* ── Reset password modal ── */
+    .modal-overlay {
+      position: fixed; inset: 0; background: rgba(0,0,0,.45);
+      display: flex; align-items: center; justify-content: center; z-index: 100; display: none;
+    }
+    .modal-overlay.open { display: flex; }
+    .modal {
+      background: white; border-radius: 12px; padding: 28px 30px;
+      width: 380px; box-shadow: 0 16px 48px rgba(0,0,0,.25);
+    }
+    .modal h3 { font-size: 1rem; font-weight: 700; margin-bottom: 6px; }
+    .modal p  { font-size: .83rem; color: var(--muted); margin-bottom: 18px; }
+    .modal label { font-size: .78rem; font-weight: 600; display: block; margin-bottom: 5px; }
+    .modal input { width: 100%; padding: 9px 12px; border: 1.5px solid var(--border); border-radius: 7px; font-size: .88rem; outline: none; margin-bottom: 14px; }
+    .modal input:focus { border-color: var(--sky); }
+    .modal-actions { display: flex; gap: 10px; justify-content: flex-end; }
+    .btn-cancel { padding: 8px 18px; background: var(--off); border: 1px solid var(--border); border-radius: 6px; font-size: .83rem; cursor: pointer; }
+    .btn-confirm { padding: 8px 18px; background: var(--sky); color: white; border: none; border-radius: 6px; font-size: .83rem; font-weight: 600; cursor: pointer; }
+    .btn-confirm:hover { opacity: .85; }
+    .modal-msg { font-size: .78rem; padding: 7px 10px; border-radius: 5px; margin-bottom: 10px; display: none; }
+    .modal-msg.ok  { background: #D5F5E3; color: var(--green); display: block; }
+    .modal-msg.err { background: #FDEDEC; color: var(--red); display: block; }
+
+    footer { text-align: center; padding: 18px; font-size: .75rem; color: var(--muted); }
+  </style>
+</head>
+<body>
+
+<nav>
+  <span class="nav-logo">✈ JEDDAH OPS</span>
+  <a href="dashboard.html">Dashboard</a>
+  <a href="index.html">Delay Reports</a>
+  <a href="totals.html">Movement Totals</a>
+  <a href="schedule.html">Daily Schedule</a>
+  <a href="ms-schedule.html" style="color:rgba(255,255,255,.65);text-decoration:none;font-size:.83rem;font-weight:600;padding:5px 0;border-bottom:2px solid transparent;">MS Schedule</a>
+  <a href="iy-flights.html" style="color:rgba(255,255,255,.65);text-decoration:none;font-size:.83rem;font-weight:600;padding:5px 0;border-bottom:2px solid transparent;">IY Flights</a>
+  <a href="garuda-flights.html" style="color:rgba(255,255,255,.65);text-decoration:none;font-size:.83rem;font-weight:600;padding:5px 0;border-bottom:2px solid transparent;">Garuda Flights</a>
+  <a href="ah-flights.html" style="color:rgba(255,255,255,.65);text-decoration:none;font-size:.83rem;font-weight:600;padding:5px 0;border-bottom:2px solid transparent;">AH Flights</a>
+  <a href="at-flights.html" style="color:rgba(255,255,255,.65);text-decoration:none;font-size:.83rem;font-weight:600;padding:5px 0;border-bottom:2px solid transparent;">AT Flights</a>
+  <a href="sm-flights.html" style="color:rgba(255,255,255,.65);text-decoration:none;font-size:.83rem;font-weight:600;padding:5px 0;border-bottom:2px solid transparent;">SM Flights</a>
+  <a href="admin.html" class="active">Admin</a>
+  <button class="btn-signout" onclick="signOut()">Sign out</button>
+</nav>
+
+<main>
+  <div class="page-header">
+    <h1>⚙️ User Management</h1>
+    <p>Add team members, set initial passwords, and manage roles</p>
+  </div>
+
+  <!-- Add user -->
+  <div class="add-card">
+    <h2>Add New User</h2>
+    <div class="form-row">
+      <div class="form-field">
+        <label>Payroll Number</label>
+        <input type="text" id="newPayroll" placeholder="150XXXXX" />
+      </div>
+      <div class="form-field">
+        <label>Full Name</label>
+        <input type="text" id="newName" placeholder="Agent name" />
+      </div>
+      <div class="form-field">
+        <label>Role</label>
+        <select id="newRole">
+          <option value="agent">Agent</option>
+          <option value="superadmin">Super Admin</option>
+        </select>
+      </div>
+      <button class="btn-add" id="addBtn" onclick="addUser()">Add User</button>
+    </div>
+    <div class="add-msg" id="addMsg"></div>
+    <p style="font-size:.75rem;color:var(--muted);margin-top:10px">
+      💡 A temporary password <strong>Jedops@2024</strong> will be set — the user can change it after signing in.
+    </p>
+  </div>
+
+  <!-- Users table -->
+  <div class="table-card">
+    <div class="table-toolbar">
+      <h2 id="userCount">Team Members</h2>
+      <input type="text" class="search-input" id="searchInput" placeholder="🔍  Search name or payroll…" oninput="filterUsers()" />
+    </div>
+    <table>
+      <thead>
+        <tr>
+          <th>Payroll No.</th>
+          <th>Full Name</th>
+          <th>Role</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody id="userTableBody">
+        <tr class="empty-row"><td colspan="4">Loading users…</td></tr>
+      </tbody>
+    </table>
+  </div>
+</main>
+
+<!-- Reset password modal -->
+<div class="modal-overlay" id="resetModal">
+  <div class="modal">
+    <h3>Reset Password</h3>
+    <p id="resetModalDesc">Set a new password for this user.</p>
+    <div class="modal-msg" id="modalMsg"></div>
+    <label>New Password</label>
+    <input type="password" id="resetPwInput" placeholder="Minimum 8 characters" />
+    <div class="modal-actions">
+      <button class="btn-cancel" onclick="closeModal()">Cancel</button>
+      <button class="btn-confirm" onclick="confirmReset()">Set Password</button>
+    </div>
+  </div>
+</div>
+
+<footer>Jeddah Airport Operations Portal · internal use only</footer>
+
+<script>
+const SUPABASE_URL  = 'https://ypwskjjkwnchxwiordqd.supabase.co';
+const SUPABASE_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inlwd3Nramprd25jaHh3aW9yZHFkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODI3MTA0MzQsImV4cCI6MjA5ODI4NjQzNH0.0HKlBWg2O0WuOat2deWpB_9baFr7JGFTZcHzEga86Kw';
+const { createClient } = supabase;
+const sb = createClient(SUPABASE_URL, SUPABASE_ANON);
+
+// Default temp password assigned to new users
+const TEMP_PASSWORD = 'Jedops@2024';
+
+let allUsers   = [];
+let resetUserId = null;
+
+function payrollToEmail(p) { return p.trim().toLowerCase() + '@jedops.com'; }
+
+// ── Guard: superadmin only ──
+async function init() {
+  const { data: { session } } = await sb.auth.getSession();
+  if (!session) { window.location.replace('login.html'); return; }
+
+  const { data: profile } = await sb.from('profiles')
+    .select('role').eq('id', session.user.id).single();
+
+  if (!profile || profile.role !== 'superadmin') {
+    alert('Access denied. Superadmin only.');
+    window.location.replace('dashboard.html');
+    return;
+  }
+
+  loadUsers();
+}
+
+// ── Load users ──
+async function loadUsers() {
+  const { data, error } = await sb.from('profiles')
+    .select('id, payroll_number, full_name, role')
+    .order('payroll_number');
+
+  if (error) { console.error(error); return; }
+
+  allUsers = data || [];
+  renderUsers(allUsers);
+  document.getElementById('userCount').textContent =
+    `Team Members (${allUsers.length})`;
+}
+
+function renderUsers(users) {
+  const tbody = document.getElementById('userTableBody');
+  if (users.length === 0) {
+    tbody.innerHTML = '<tr class="empty-row"><td colspan="4">No users found.</td></tr>';
+    return;
+  }
+  tbody.innerHTML = users.map(u => `
+    <tr>
+      <td><strong>${u.payroll_number || '—'}</strong></td>
+      <td>${u.full_name || '—'}</td>
+      <td><span class="badge-role ${u.role === 'superadmin' ? 'badge-superadmin' : 'badge-agent'}">
+        ${u.role === 'superadmin' ? 'Super Admin' : 'Agent'}
+      </span></td>
+      <td>
+        <button class="action-btn btn-reset" onclick="openReset('${u.id}','${u.full_name || u.payroll_number}')">Reset PW</button>
+        <button class="action-btn btn-delete" onclick="deleteUser('${u.id}','${u.payroll_number}')">Delete</button>
+      </td>
+    </tr>
+  `).join('');
+}
+
+function filterUsers() {
+  const q = document.getElementById('searchInput').value.toLowerCase();
+  renderUsers(allUsers.filter(u =>
+    (u.payroll_number||'').toLowerCase().includes(q) ||
+    (u.full_name||'').toLowerCase().includes(q)
+  ));
+}
+
+// ── Add user ──
+async function addUser() {
+  const payroll = document.getElementById('newPayroll').value.trim();
+  const name    = document.getElementById('newName').value.trim();
+  const role    = document.getElementById('newRole').value;
+  const msg     = document.getElementById('addMsg');
+  const btn     = document.getElementById('addBtn');
+
+  msg.className = 'add-msg';
+
+  if (!payroll) return showAddMsg('Enter a payroll number.', false);
+  if (!name)    return showAddMsg('Enter the agent\'s full name.', false);
+
+  btn.disabled = true; btn.textContent = 'Adding…';
+
+  // Create user via Edge Function (service role key kept server-side)
+  const { data: { session } } = await sb.auth.getSession();
+  const res = await fetch(`${SUPABASE_URL}/functions/v1/admin-create-user`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${session.access_token}`
+    },
+    body: JSON.stringify({
+      email:    payrollToEmail(payroll),
+      password: TEMP_PASSWORD,
+      fullName: name,
+      role:     role,
+      payroll:  payroll
+    })
+  });
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    btn.disabled = false; btn.textContent = 'Add User';
+    return showAddMsg('Error: ' + (err.error || 'Failed to create user'), false);
+  }
+
+  btn.disabled = false; btn.textContent = 'Add User';
+  document.getElementById('newPayroll').value = '';
+  document.getElementById('newName').value    = '';
+  document.getElementById('newRole').value    = 'agent';
+
+  showAddMsg(`✅ ${name} added. Temp password: ${TEMP_PASSWORD}`, true);
+  loadUsers();
+}
+
+function showAddMsg(msg, ok) {
+  const el = document.getElementById('addMsg');
+  el.textContent = msg;
+  el.className = 'add-msg ' + (ok ? 'ok' : 'err');
+}
+
+// ── Reset password modal ──
+function openReset(userId, name) {
+  resetUserId = userId;
+  document.getElementById('resetModalDesc').textContent = `Set a new password for ${name}.`;
+  document.getElementById('resetPwInput').value = '';
+  document.getElementById('modalMsg').className = 'modal-msg';
+  document.getElementById('resetModal').classList.add('open');
+}
+
+function closeModal() {
+  document.getElementById('resetModal').classList.remove('open');
+  resetUserId = null;
+}
+
+async function confirmReset() {
+  const pw  = document.getElementById('resetPwInput').value;
+  const msg = document.getElementById('modalMsg');
+  msg.className = 'modal-msg';
+
+  if (pw.length < 8) {
+    msg.textContent = 'Password must be at least 8 characters.';
+    msg.className = 'modal-msg err';
+    return;
+  }
+
+  // Note: updating another user's password requires Supabase Edge Function with service key.
+  // This calls the function endpoint:
+  const { data: { session } } = await sb.auth.getSession();
+  const res = await fetch(`${SUPABASE_URL}/functions/v1/admin-reset-password`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${session.access_token}`
+    },
+    body: JSON.stringify({ userId: resetUserId, password: pw })
+  });
+
+  if (res.ok) {
+    msg.textContent = '✅ Password updated.';
+    msg.className = 'modal-msg ok';
+    setTimeout(closeModal, 1400);
+  } else {
+    const err = await res.json().catch(() => ({}));
+    msg.textContent = 'Failed: ' + (err.error || 'Unknown error');
+    msg.className = 'modal-msg err';
+  }
+}
+
+// ── Delete user ──
+async function deleteUser(userId, payroll) {
+  if (!confirm(`Delete user ${payroll}? This cannot be undone.`)) return;
+
+  // Delete profile first
+  await sb.from('profiles').delete().eq('id', userId);
+
+  // Delete auth user via Edge Function
+  const { data: { session } } = await sb.auth.getSession();
+  await fetch(`${SUPABASE_URL}/functions/v1/admin-delete-user`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${session.access_token}`
+    },
+    body: JSON.stringify({ userId })
+  });
+
+  loadUsers();
+}
+
+async function signOut() {
+  await sb.auth.signOut();
+  window.location.replace('login.html');
+}
+
+// Close modal on overlay click
+document.getElementById('resetModal').addEventListener('click', e => {
+  if (e.target === e.currentTarget) closeModal();
+});
+
+init();
+</script>
+</body>
+</html>

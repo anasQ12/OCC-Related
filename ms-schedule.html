@@ -1,0 +1,419 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>MS Schedule Generator · Jeddah Airport OPS</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+  <style>
+    :root {
+      --navy:#0B1F3A; --sky:#1E6FA8; --ice:#D6EAF8;
+      --green:#1A7A4A; --red:#C0392B; --white:#FFFFFF;
+      --off:#F4F7FA; --border:#C8D8E8; --text:#1A2A3A; --muted:#5A7090;
+    }
+    *,*::before,*::after{box-sizing:border-box;margin:0;padding:0;}
+    body{font-family:'Segoe UI',Arial,sans-serif;background:var(--off);color:var(--text);min-height:100vh;}
+
+    nav{background:var(--navy);padding:0 40px;display:flex;gap:24px;align-items:center;height:56px;}
+    nav a{color:rgba(255,255,255,.65);text-decoration:none;font-size:.83rem;font-weight:600;padding:5px 0;border-bottom:2px solid transparent;}
+    nav a:hover{color:white;}
+    nav a.active{color:white;border-bottom-color:var(--sky);}
+    .nav-logo{color:white;font-size:.95rem;font-weight:800;margin-right:auto;letter-spacing:.5px;}
+    .btn-signout{background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.15);color:white;padding:6px 14px;border-radius:6px;font-size:.8rem;font-weight:600;cursor:pointer;}
+
+    header{background:linear-gradient(135deg,var(--navy) 0%,#1A4A7A 100%);padding:26px 40px 22px;box-shadow:0 3px 12px rgba(0,0,0,.22);}
+    header h1{color:var(--white);font-size:1.45rem;font-weight:700;}
+    header p{color:var(--ice);font-size:.83rem;margin-top:3px;}
+
+    main{max-width:1100px;margin:0 auto;padding:36px 24px 70px;}
+
+    .section-title{font-size:.95rem;font-weight:700;color:var(--navy);margin:32px 0 14px;display:flex;align-items:center;gap:10px;}
+    .section-title::after{content:'';flex:1;height:1px;background:var(--border);}
+
+    .upload-card{background:var(--white);border:2px dashed var(--border);border-radius:12px;padding:36px 32px;text-align:center;cursor:pointer;position:relative;transition:border-color .2s,background .2s;}
+    .upload-card.drag{border-color:var(--sky);background:var(--ice);}
+    .upload-card input[type=file]{position:absolute;inset:0;opacity:0;cursor:pointer;width:100%;height:100%;}
+    .upload-icon{font-size:2.6rem;margin-bottom:10px;}
+    .upload-card h2{font-size:1rem;color:var(--navy);margin-bottom:5px;}
+    .upload-card p{font-size:.83rem;color:var(--muted);}
+    .file-status{margin-top:12px;font-size:.85rem;font-weight:600;color:var(--green);min-height:18px;}
+    .file-status.error{color:var(--red);}
+
+    .stats-bar{display:flex;gap:14px;flex-wrap:wrap;margin-top:20px;}
+    .stat{background:var(--white);border:1px solid var(--border);border-radius:8px;padding:12px 18px;min-width:130px;}
+    .stat-value{font-size:1.6rem;font-weight:800;color:var(--sky);}
+    .stat-label{font-size:.73rem;color:var(--muted);margin-top:2px;text-transform:uppercase;letter-spacing:.5px;}
+
+    .table-wrap{overflow-x:auto;border:1px solid var(--border);border-radius:10px;margin-top:4px;}
+    .preview-tbl{width:100%;border-collapse:collapse;font-size:.8rem;}
+    .preview-tbl th{padding:9px 12px;text-align:left;font-weight:700;font-size:.72rem;text-transform:uppercase;letter-spacing:.5px;white-space:nowrap;border-bottom:1px solid var(--border);background:#1E6FA8;color:white;}
+    .preview-tbl td{padding:8px 12px;border-bottom:1px solid #EEF3F8;white-space:nowrap;}
+    .preview-tbl tr:last-child td{border-bottom:none;}
+    .preview-tbl tr:nth-child(even) td{background:#F8FBFF;}
+    .badge-next{background:#FEF3CD;color:#8B6914;font-size:.65rem;font-weight:700;padding:1px 6px;border-radius:10px;}
+    .flt{font-family:monospace;font-weight:600;}
+    .time{font-family:monospace;color:var(--navy);}
+
+    .btn-wrap{margin-top:28px;display:flex;gap:14px;flex-wrap:wrap;align-items:center;}
+    .btn-dl{padding:11px 28px;background:linear-gradient(135deg,var(--sky),var(--navy));color:white;border:none;border-radius:7px;font-size:.9rem;font-weight:700;cursor:pointer;display:flex;align-items:center;gap:8px;transition:opacity .2s,transform .15s;box-shadow:0 2px 8px rgba(30,111,168,.25);}
+    .btn-dl:hover:not(:disabled){opacity:.88;transform:translateY(-1px);}
+    .btn-dl:disabled{opacity:.4;cursor:not-allowed;}
+    .btn-count{font-size:.8rem;color:var(--muted);align-self:center;}
+
+    #log{margin-top:22px;background:var(--navy);color:#B8D8F0;border-radius:8px;padding:14px 18px;font-size:.79rem;font-family:'Courier New',monospace;max-height:150px;overflow-y:auto;display:none;line-height:1.65;}
+    #log.visible{display:block;}
+    .log-ok{color:#7FD4A0;} .log-err{color:#F5A5A0;} .log-info{color:#9FC8E8;}
+
+    footer{text-align:center;padding:18px;font-size:.75rem;color:var(--muted);}
+  </style>
+</head>
+<body>
+<nav style="background:#0B1F3A;padding:0 40px;display:flex;gap:24px;align-items:center;height:56px;flex-wrap:wrap;">
+  <span style="color:white;font-size:.95rem;font-weight:800;margin-right:auto;letter-spacing:.5px;">✈ JEDDAH OPS</span>
+  <a href="dashboard.html" style="color:rgba(255,255,255,.65);text-decoration:none;font-size:.83rem;font-weight:600;padding:5px 0;border-bottom:2px solid transparent;">Dashboard</a>
+  <a href="index.html" style="color:rgba(255,255,255,.65);text-decoration:none;font-size:.83rem;font-weight:600;padding:5px 0;border-bottom:2px solid transparent;">Delay Reports</a>
+  <a href="totals.html" style="color:rgba(255,255,255,.65);text-decoration:none;font-size:.83rem;font-weight:600;padding:5px 0;border-bottom:2px solid transparent;">Movement Totals</a>
+  <a href="schedule.html" style="color:rgba(255,255,255,.65);text-decoration:none;font-size:.83rem;font-weight:600;padding:5px 0;border-bottom:2px solid transparent;">Daily Schedule</a>
+  <a href="ms-schedule.html" style="color:white;text-decoration:none;font-size:.83rem;font-weight:600;padding:5px 0;border-bottom:2px solid #1E6FA8;">MS Schedule</a>
+  <a href="iy-flights.html" style="color:rgba(255,255,255,.65);text-decoration:none;font-size:.83rem;font-weight:600;padding:5px 0;border-bottom:2px solid transparent;">IY Flights</a>
+  <a href="garuda-flights.html" style="color:rgba(255,255,255,.65);text-decoration:none;font-size:.83rem;font-weight:600;padding:5px 0;border-bottom:2px solid transparent;">Garuda Flights</a>
+  <a href="ah-flights.html" style="color:rgba(255,255,255,.65);text-decoration:none;font-size:.83rem;font-weight:600;padding:5px 0;border-bottom:2px solid transparent;">AH Flights</a>
+  <a href="at-flights.html" style="color:rgba(255,255,255,.65);text-decoration:none;font-size:.83rem;font-weight:600;padding:5px 0;border-bottom:2px solid transparent;">AT Flights</a>
+  <a href="sm-flights.html" style="color:rgba(255,255,255,.65);text-decoration:none;font-size:.83rem;font-weight:600;padding:5px 0;border-bottom:2px solid transparent;">SM Flights</a>
+  <a href="admin.html" id="navAdmin" style="color:rgba(255,255,255,.65);text-decoration:none;font-size:.83rem;font-weight:600;padding:5px 0;border-bottom:2px solid transparent;display:none;">Admin</a>
+  <button onclick="signOutNav()" style="background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.15);color:white;padding:6px 14px;border-radius:6px;font-size:.8rem;font-weight:600;cursor:pointer;">Sign out</button>
+</nav>
+<script>
+(async () => {
+  const _sb = supabase.createClient("https://ypwskjjkwnchxwiordqd.supabase.co", "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inlwd3Nramprd25jaHh3aW9yZHFkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODI3MTA0MzQsImV4cCI6MjA5ODI4NjQzNH0.0HKlBWg2O0WuOat2deWpB_9baFr7JGFTZcHzEga86Kw");
+  const { data: { session } } = await _sb.auth.getSession();
+  if (!session) { window.location.replace("login.html"); return; }
+  const { data: profile } = await _sb.from("profiles").select("role").eq("id", session.user.id).single();
+  if (profile?.role === "superadmin") {
+    document.getElementById("navAdmin").style.display = "";
+  }
+})();
+async function signOutNav() {
+  const _sb = supabase.createClient("https://ypwskjjkwnchxwiordqd.supabase.co", "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inlwd3Nramprd25jaHh3aW9yZHFkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODI3MTA0MzQsImV4cCI6MjA5ODI4NjQzNH0.0HKlBWg2O0WuOat2deWpB_9baFr7JGFTZcHzEga86Kw");
+  await _sb.auth.signOut();
+  window.location.replace("login.html");
+}
+</script>
+
+
+
+<header>
+  <h1>EgyptAir (MS) Schedule Generator</h1>
+  <p>Upload the MS Excel schedule · pairs arrivals with departures by aircraft · downloads system-ready CSV</p>
+</header>
+
+<main>
+
+  <div class="section-title">① Upload MS Schedule (.xlsx)</div>
+  <div class="upload-card" id="dropzone">
+    <input type="file" id="xlsxInput" accept=".xlsx,.xls" />
+    <div class="upload-icon">📊</div>
+    <h2>Drop the MS schedule Excel file here, or click to browse</h2>
+    <p>Two-column layout: arrivals on the left (A–K) · departures on the right (N–X) · paired by aircraft registration</p>
+    <div class="file-status" id="fileStatus"></div>
+  </div>
+
+  <div id="previewSection" style="display:none">
+    <div class="stats-bar">
+      <div class="stat"><div class="stat-value" id="statPaired">0</div><div class="stat-label">TurnAround Pairs</div></div>
+      <div class="stat"><div class="stat-value" id="statDates">—</div><div class="stat-label" style="font-size:.65rem">Date Range</div></div>
+      <div class="stat"><div class="stat-value" id="statOvernight" style="color:#B7770D">0</div><div class="stat-label">Overnight (+1)</div></div>
+      <div class="stat"><div class="stat-value" id="statUnpaired" style="color:var(--red)">0</div><div class="stat-label">Unpaired Flights</div></div>
+    </div>
+
+    <div class="section-title" style="margin-top:24px">② Preview</div>
+    <div class="table-wrap">
+      <table class="preview-tbl">
+        <thead>
+          <tr>
+            <th>#</th><th>Arr Flt</th><th>Dep Flt</th><th>AC Reg</th><th>AC Type</th>
+            <th>Origin</th><th>Dest</th><th>STA</th><th>STD</th>
+            <th>SDA</th><th>SDD</th>
+          </tr>
+        </thead>
+        <tbody id="previewBody"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="section-title">③ Download CSV</div>
+  <div class="btn-wrap">
+    <button class="btn-dl" id="btnDl" disabled onclick="downloadCSV()">⬇ Download CSV for System Upload</button>
+    <span class="btn-count" id="btnCount"></span>
+  </div>
+
+  <div id="log"></div>
+</main>
+
+<footer>EgyptAir Schedule Generator · runs entirely in your browser · no data uploaded anywhere</footer>
+
+<script>
+// ── AC type map ──
+const AC_MAP = {
+  '73A':'B737','73B':'B737','73C':'B737','73N':'B737','738':'B738',
+  'A33':'A330','333':'A330','332':'A330',
+  '32N':'A320','321':'A321',
+  '359':'A359','789':'B789','787':'B787'
+};
+function mapAC(raw) {
+  const s = String(raw||'').trim();
+  return AC_MAP[s] || (s ? 'A'+s : 'B737');
+}
+
+// ── Date helpers ──
+function fmtDate(d) { const mm=String(d.getMonth()+1).padStart(2,"0"); const dd=String(d.getDate()).padStart(2,"0"); return `${mm}/${dd}/${d.getFullYear()}`; }
+function addDay(d)  { const n=new Date(d); n.setDate(n.getDate()+1); return n; }
+function fmtTime(t) {
+  if (!t) return '';
+  // t is a fraction of a day from xlsx serial, or a Date
+  if (t instanceof Date) return t.getHours().toString().padStart(2,'0') + t.getMinutes().toString().padStart(2,'0');
+  return '';
+}
+
+// ── Excel serial time → HHmm ──
+function serialToHHMM(serial) {
+  if (serial === null || serial === undefined || serial === '') return '';
+  // If it's a Date object (SheetJS parses times as dates)
+  if (serial instanceof Date) {
+    return serial.getUTCHours().toString().padStart(2,'0') + serial.getUTCMinutes().toString().padStart(2,'0');
+  }
+  // Numeric fraction
+  if (typeof serial === 'number') {
+    const totalMins = Math.round(serial * 24 * 60);
+    const h = Math.floor(totalMins / 60) % 24;
+    const m = totalMins % 60;
+    return h.toString().padStart(2,'0') + m.toString().padStart(2,'0');
+  }
+  return String(serial).replace(':','').substring(0,4);
+}
+
+// ── Drop & file handling ──
+let pairedRows = [];
+const dz = document.getElementById('dropzone');
+dz.addEventListener('dragover',  e => { e.preventDefault(); dz.classList.add('drag'); });
+dz.addEventListener('dragleave', () => dz.classList.remove('drag'));
+dz.addEventListener('drop', e => { e.preventDefault(); dz.classList.remove('drag'); if(e.dataTransfer.files[0]) processFile(e.dataTransfer.files[0]); });
+document.getElementById('xlsxInput').addEventListener('change', e => { if(e.target.files[0]) processFile(e.target.files[0]); });
+
+function processFile(file) {
+  const st = document.getElementById('fileStatus');
+  st.className = 'file-status';
+  st.textContent = `Reading "${file.name}"…`;
+  pairedRows = [];
+  document.getElementById('btnDl').disabled = true;
+  clearLog();
+  const reader = new FileReader();
+  reader.onload = e => {
+    try { parseXLSX(e.target.result); }
+    catch(err) { st.className='file-status error'; st.textContent='❌ '+err.message; logLine('Error: '+err.message,'err'); }
+  };
+  reader.readAsArrayBuffer(file);
+}
+
+function parseXLSX(buffer) {
+  const wb  = XLSX.read(buffer, { type:'array', cellDates:true });
+  const ws  = wb.Sheets[wb.SheetNames[0]];
+  const raw = XLSX.utils.sheet_to_json(ws, { header:1, raw:false, dateNF:'yyyy-mm-dd' });
+
+  // Skip header row (row 0)
+  const arrivals   = [];
+  const departures = [];
+
+  for (let i = 1; i < raw.length; i++) {
+    const row = raw[i];
+    if (!row || row.length < 2) continue;
+
+    // Left side: A=date, B=flight, C=route, D=STA, G=reg, I=acType
+    const dateL = row[0], fltL = row[1], routeL = row[2], staL = row[3], regL = row[6], acL = row[8];
+    // Right side: N=date, O=flight, P=route, Q=STD, T=reg, V=acType
+    const dateR = row[13], fltR = row[14], routeR = row[15], stdR = row[16], regR = row[19], acR = row[21];
+
+    if (fltL && dateL) {
+      const parts = fltL.toString().trim().split(/\s+/);
+      if (parts.length >= 2) {
+        // Parse date: subtract 1 day to correct UTC offset
+        const d = new Date(dateL);
+        d.setDate(d.getDate() - 1);
+        arrivals.push({
+          date: new Date(d.getFullYear(), d.getMonth(), d.getDate()),
+          flt:  parts[1].replace(/^0+/,'') || '0',
+          airline: parts[0],
+          route: (routeL||'').toString().trim(),
+          sta:  serialToHHMM(staL),
+          staRaw: staL,
+          reg:  (regL||'').toString().trim(),
+          ac:   (acL||'').toString().trim()
+        });
+      }
+    }
+
+    if (fltR && dateR) {
+      const parts = fltR.toString().trim().split(/\s+/);
+      if (parts.length >= 2) {
+        const d = new Date(dateR);
+        d.setDate(d.getDate() - 1);
+        departures.push({
+          date: new Date(d.getFullYear(), d.getMonth(), d.getDate()),
+          flt:  parts[1].replace(/^0+/,'') || '0',
+          airline: parts[0],
+          route: (routeR||'').toString().trim(),
+          std:  serialToHHMM(stdR),
+          stdRaw: stdR,
+          reg:  (regR||'').toString().trim(),
+          ac:   (acR||'').toString().trim()
+        });
+      }
+    }
+  }
+
+  logLine(`Parsed ${arrivals.length} arrivals, ${departures.length} departures`, 'info');
+
+  // ── Pair by same REG ──
+  // Rule 1: same date
+  // Rule 2: dep.date = arr.date+1 AND dep STD time < arr STA time (crossed midnight)
+  function isOvernightPair(arr, dep) {
+    const arrNext = addDay(arr.date);
+    if (dep.date.getTime() !== arrNext.getTime()) return false;
+    // STD < STA → crossed midnight
+    return dep.std && arr.sta && dep.std < arr.sta;
+  }
+
+  const paired   = [];
+  const usedDep  = new Set();
+  const unpairedArr = [];
+
+  for (const arr of arrivals) {
+    let found = false;
+    for (let i = 0; i < departures.length; i++) {
+      if (usedDep.has(i)) continue;
+      const dep = departures[i];
+      const sameDay  = dep.reg === arr.reg && dep.date.getTime() === arr.date.getTime();
+      const overnight = dep.reg === arr.reg && isOvernightPair(arr, dep);
+      if (sameDay || overnight) {
+        const sda = arr.date;
+        const sdd = dep.date;
+        paired.push({
+          'Sl.No.':           '',
+          'AirlineCode':      arr.airline,
+          'ServiceType':      'TurnAround',
+          'SDA':              fmtDate(sda),
+          'SDD':              fmtDate(sdd),
+          'ArrFno':           arr.flt,
+          'DepFno':           dep.flt,
+          'Aircraft':         mapAC(arr.ac),
+          'Aircraft Reg':     'SU' + arr.reg,
+          'Origin1':          arr.route,
+          'Origin2':          '',
+          'Dest1':            dep.route,
+          'Dest2':            '',
+          'STA':              arr.sta,
+          'STD':              dep.std,
+          'ArrivalRemarks':   '',
+          'DepartureRemarks': '',
+          _sda: sda, _sta: arr.sta, _overnight: fmtDate(sda) !== fmtDate(sdd)
+        });
+        usedDep.add(i);
+        found = true;
+        break;
+      }
+    }
+    if (!found) unpairedArr.push(arr);
+  }
+
+  const unpairedDep = departures.filter((_,i) => !usedDep.has(i));
+
+  // Sort by SDA then STA
+  paired.sort((a, b) => {
+    const dt = a._sda - b._sda;
+    if (dt !== 0) return dt;
+    return (a._sta||'').localeCompare(b._sta||'');
+  });
+
+  paired.forEach((r, i) => r['Sl.No.'] = String(i + 1));
+  pairedRows = paired;
+
+  logLine(`Paired: ${paired.length} TurnAround rows`, 'ok');
+  if (unpairedArr.length) logLine(`Unpaired arrivals (no matching dep): ${unpairedArr.length}`, 'info');
+  if (unpairedDep.length) logLine(`Unpaired departures (no matching arr): ${unpairedDep.length}`, 'info');
+
+  updateUI(paired, unpairedArr.length + unpairedDep.length);
+  document.getElementById('fileStatus').textContent = `✅ ${arrivals.length} arrivals · ${departures.length} departures · ${paired.length} pairs generated`;
+  document.getElementById('btnDl').disabled = false;
+  document.getElementById('btnCount').textContent = `${paired.length} rows`;
+}
+
+function updateUI(paired, unpaired) {
+  const dates = [...new Set([...paired.map(r=>r.SDA), ...paired.map(r=>r.SDD)])].sort();
+  const overnight = paired.filter(r => r._overnight).length;
+
+  document.getElementById('statPaired').textContent   = paired.length;
+  document.getElementById('statDates').textContent    = dates.length > 1 ? `${dates[0]} – ${dates[dates.length-1]}` : dates[0]||'—';
+  document.getElementById('statOvernight').textContent = overnight;
+  document.getElementById('statUnpaired').textContent  = unpaired;
+
+  const tbody = document.getElementById('previewBody');
+  tbody.innerHTML = '';
+  paired.forEach((r,i) => {
+    const tr = document.createElement('tr');
+    const nextBadge = r._overnight ? ' <span class="badge-next">+1</span>' : '';
+    tr.innerHTML = `
+      <td>${i+1}</td>
+      <td class="flt">MS${r.ArrFno}</td>
+      <td class="flt">MS${r.DepFno}</td>
+      <td><strong>${r['Aircraft Reg']}</strong></td>
+      <td>${r.Aircraft}</td>
+      <td>${r.Origin1}</td>
+      <td>${r.Dest1}</td>
+      <td class="time">${r.STA}</td>
+      <td class="time">${r.STD}</td>
+      <td>${r.SDA}</td>
+      <td>${r.SDD}${nextBadge}</td>
+    `;
+    tbody.appendChild(tr);
+  });
+
+  document.getElementById('previewSection').style.display = 'block';
+}
+
+// ── Download CSV ──
+const CSV_HEADERS = ['Sl.No.','AirlineCode','ServiceType','SDA','SDD','ArrFno','DepFno',
+  'Aircraft','Aircraft Reg','Origin1','Origin2','Dest1','Dest2','STA','STD','ArrivalRemarks','DepartureRemarks'];
+
+function escapeCSV(v) {
+  const s = String(v===null||v===undefined?'':v);
+  return (s.includes(',')||s.includes('"')||s.includes('\n')) ? '"'+s.replace(/"/g,'""')+'"' : s;
+}
+
+function downloadCSV() {
+  const lines = [CSV_HEADERS.join(',')];
+  pairedRows.forEach(r => {
+    lines.push(CSV_HEADERS.map(h => escapeCSV(r[h]!==undefined?r[h]:'')).join(','));
+  });
+  const blob = new Blob([lines.join('\r\n')], { type:'text/csv;charset=utf-8;' });
+  const a = document.createElement('a');
+  const date = pairedRows[0]?.SDA?.replace(/\//g,'-') || 'schedule';
+  a.href = URL.createObjectURL(blob);
+  a.download = `MS-Schedule-${date}.csv`;
+  a.click();
+  URL.revokeObjectURL(a.href);
+  logLine(`Downloaded MS-Schedule-${date}.csv (${pairedRows.length} rows) ✅`, 'ok');
+}
+
+function logLine(msg, type) {
+  const el = document.getElementById('log');
+  el.classList.add('visible');
+  const d = document.createElement('div');
+  d.className = type==='ok'?'log-ok':type==='err'?'log-err':'log-info';
+  d.textContent = `[${new Date().toLocaleTimeString()}] ${msg}`;
+  el.appendChild(d); el.scrollTop = el.scrollHeight;
+}
+function clearLog() { const el=document.getElementById('log'); el.innerHTML=''; el.classList.remove('visible'); }
+</script>
+</body>
+</html>
