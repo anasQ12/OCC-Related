@@ -1,0 +1,657 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Flight Movement Totals · JEDDAH</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+  <style>
+    :root {
+      --navy:    #0B1F3A;
+      --sky:     #1E6FA8;
+      --ice:     #D6EAF8;
+      --green:   #117A65;
+      --red:     #C0392B;
+      --white:   #FFFFFF;
+      --offwhite:#F4F7FA;
+      --border:  #C8D8E8;
+      --text:    #1A2A3A;
+      --muted:   #5A7090;
+      --green-fill: #E2EEDA;
+      --orange-fill:#FBE5D5;
+    }
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: 'Segoe UI', Arial, sans-serif; background: var(--offwhite); color: var(--text); min-height: 100vh; }
+
+    nav {
+      background: var(--navy); padding: 10px 40px;
+      display: flex; gap: 24px; align-items: center;
+    }
+    nav a {
+      color: rgba(255,255,255,.65); text-decoration: none;
+      font-size: .83rem; font-weight: 600; letter-spacing: .3px;
+      padding: 5px 0; border-bottom: 2px solid transparent; transition: color .2s, border-color .2s;
+    }
+    nav a:hover { color: white; }
+    nav a.active { color: white; border-bottom-color: var(--sky); }
+    nav .logo { color: white; font-size: .95rem; font-weight: 800; margin-right: auto; letter-spacing: .5px; }
+
+    header {
+      background: linear-gradient(135deg, var(--navy) 0%, #1A4A7A 100%);
+      padding: 26px 40px 22px; display: flex; align-items: center; gap: 18px;
+      box-shadow: 0 3px 12px rgba(0,0,0,.22);
+    }
+    header h1 { color: var(--white); font-size: 1.45rem; font-weight: 700; line-height: 1.2; }
+    header p  { color: var(--ice);   font-size: .83rem; margin-top: 3px; }
+
+    main { max-width: 960px; margin: 0 auto; padding: 36px 24px 70px; }
+
+    .section-title {
+      font-size: .95rem; font-weight: 700; color: var(--navy);
+      margin: 32px 0 14px; display: flex; align-items: center; gap: 10px;
+    }
+    .section-title::after { content:''; flex:1; height:1px; background:var(--border); }
+
+    .upload-card {
+      background: var(--white); border: 2px dashed var(--border);
+      border-radius: 12px; padding: 36px 32px; text-align: center;
+      cursor: pointer; position: relative; transition: border-color .2s, background .2s;
+    }
+    .upload-card.drag { border-color: var(--sky); background: var(--ice); }
+    .upload-card input[type=file] { position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; height: 100%; }
+    .upload-icon { font-size: 2.6rem; margin-bottom: 10px; }
+    .upload-card h2 { font-size: 1rem; color: var(--navy); margin-bottom: 5px; }
+    .upload-card p  { font-size: .83rem; color: var(--muted); }
+    .file-status { margin-top: 12px; font-size: .85rem; font-weight: 600; color: var(--green); min-height: 18px; }
+    .file-status.error { color: var(--red); }
+
+    /* ── Template preview ── */
+    .template-wrap {
+      display: flex; justify-content: center; margin-top: 4px;
+    }
+    .tpl {
+      width: 100%; max-width: 680px;
+      border: 1.5px solid #888; border-collapse: collapse;
+      font-family: Calibri, Arial, sans-serif;
+      box-shadow: 0 2px 12px rgba(0,0,0,.10);
+    }
+    .tpl td {
+      border: 1px solid #AAA; padding: 0; text-align: center;
+      vertical-align: middle; white-space: nowrap; line-height: 1;
+    }
+    .tpl td.no-border { border: none; }
+
+    /* row types */
+    .r-title   { height: 38px; font-size: 17px; font-weight: bold; background: white; }
+    .r-date    { height: 32px; font-size: 16px; color: #C00000; background: white; }
+    .r-spacer  { height: 10px; background: white; }
+    .r-sec     { height: 28px; font-size: 15px; font-weight: bold; background: var(--green-fill); }
+    .r-subhdr  { height: 26px; font-size: 11px; font-weight: bold; text-decoration: underline; color: #C00000; background: var(--orange-fill); }
+    .r-val     { height: 28px; font-size: 13px; background: white; }
+    .r-total   { height: 26px; font-size: 11px; font-weight: bold; color: #C00000; background: white; }
+    .r-grand   { height: 30px; font-size: 15px; font-weight: bold; background: var(--green-fill); }
+    .r-grand .gv { font-size: 16px; color: #C00000; font-weight: bold; }
+
+    .val-box {
+      display: inline-block; min-width: 60px; padding: 2px 14px;
+      border: 1px solid #888; font-size: 14px; background: white;
+    }
+    .total-box {
+      display: inline-block; min-width: 60px; padding: 2px 14px;
+      border: 1px solid #888; font-size: 13px; font-weight: bold; color: #C00000; background: white;
+    }
+
+    /* ── Buttons ── */
+    .btn-wrap { margin-top: 28px; display: flex; gap: 14px; flex-wrap: wrap; }
+    .btn-gen {
+      padding: 11px 26px;
+      background: linear-gradient(135deg, var(--sky), var(--navy));
+      color: white; border: none; border-radius: 7px;
+      font-size: .9rem; font-weight: 700; cursor: pointer;
+      display: flex; align-items: center; gap: 8px;
+      transition: opacity .2s, transform .15s;
+      box-shadow: 0 2px 8px rgba(30,111,168,.25);
+    }
+    .btn-gen:hover:not(:disabled) { opacity: .88; transform: translateY(-1px); }
+    .btn-gen:disabled { opacity: .4; cursor: not-allowed; }
+
+    /* ── Log ── */
+    #log {
+      margin-top: 22px; background: var(--navy); color: #B8D8F0;
+      border-radius: 8px; padding: 14px 18px; font-size: .79rem;
+      font-family: 'Courier New', monospace; max-height: 150px;
+      overflow-y: auto; display: none; line-height: 1.65;
+    }
+    #log.visible { display: block; }
+    .log-ok  { color: #7FD4A0; }
+    .log-err { color: #F5A5A0; }
+    .log-info{ color: #9FC8E8; }
+
+    footer { text-align: center; padding: 18px; font-size: .75rem; color: var(--muted); }
+
+    @media (max-width: 620px) {
+      header { padding: 20px; } nav { padding: 10px 16px; gap: 14px; }
+      .tpl { font-size: .8rem; }
+    }
+  </style>
+</head>
+<body>
+<nav style="background:#0B1F3A;padding:0 40px;display:flex;gap:24px;align-items:center;height:56px;flex-wrap:wrap;">
+  <span style="color:white;font-size:.95rem;font-weight:800;margin-right:auto;letter-spacing:.5px;">✈ JEDDAH OPS</span>
+  <a href="dashboard.html" style="color:rgba(255,255,255,.65);text-decoration:none;font-size:.83rem;font-weight:600;padding:5px 0;border-bottom:2px solid transparent;">Dashboard</a>
+  <a href="index.html" style="color:rgba(255,255,255,.65);text-decoration:none;font-size:.83rem;font-weight:600;padding:5px 0;border-bottom:2px solid transparent;">Delay Reports</a>
+  <a href="totals.html" style="color:white;text-decoration:none;font-size:.83rem;font-weight:600;padding:5px 0;border-bottom:2px solid #1E6FA8;">Movement Totals</a>
+  <a href="schedule.html" style="color:rgba(255,255,255,.65);text-decoration:none;font-size:.83rem;font-weight:600;padding:5px 0;border-bottom:2px solid transparent;">Daily Schedule</a>
+  <a href="ms-schedule.html" style="color:rgba(255,255,255,.65);text-decoration:none;font-size:.83rem;font-weight:600;padding:5px 0;border-bottom:2px solid transparent;">MS Schedule</a>
+  <a href="iy-flights.html" style="color:rgba(255,255,255,.65);text-decoration:none;font-size:.83rem;font-weight:600;padding:5px 0;border-bottom:2px solid transparent;">IY Flights</a>
+  <a href="garuda-flights.html" style="color:rgba(255,255,255,.65);text-decoration:none;font-size:.83rem;font-weight:600;padding:5px 0;border-bottom:2px solid transparent;">Garuda Flights</a>
+  <a href="ah-flights.html" style="color:rgba(255,255,255,.65);text-decoration:none;font-size:.83rem;font-weight:600;padding:5px 0;border-bottom:2px solid transparent;">AH Flights</a>
+  <a href="at-flights.html" style="color:rgba(255,255,255,.65);text-decoration:none;font-size:.83rem;font-weight:600;padding:5px 0;border-bottom:2px solid transparent;">AT Flights</a>
+  <a href="sm-flights.html" style="color:rgba(255,255,255,.65);text-decoration:none;font-size:.83rem;font-weight:600;padding:5px 0;border-bottom:2px solid transparent;">SM Flights</a>
+  <a href="admin.html" id="navAdmin" style="color:rgba(255,255,255,.65);text-decoration:none;font-size:.83rem;font-weight:600;padding:5px 0;border-bottom:2px solid transparent;display:none;">Admin</a>
+  <button onclick="signOutNav()" style="background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.15);color:white;padding:6px 14px;border-radius:6px;font-size:.8rem;font-weight:600;cursor:pointer;">Sign out</button>
+</nav>
+<script>
+(async () => {
+  const _sb = supabase.createClient("https://ypwskjjkwnchxwiordqd.supabase.co", "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inlwd3Nramprd25jaHh3aW9yZHFkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODI3MTA0MzQsImV4cCI6MjA5ODI4NjQzNH0.0HKlBWg2O0WuOat2deWpB_9baFr7JGFTZcHzEga86Kw");
+  const { data: { session } } = await _sb.auth.getSession();
+  if (!session) { window.location.replace("login.html"); return; }
+  const { data: profile } = await _sb.from("profiles").select("role").eq("id", session.user.id).single();
+  if (profile?.role === "superadmin") {
+    document.getElementById("navAdmin").style.display = "";
+  }
+})();
+async function signOutNav() {
+  const _sb = supabase.createClient("https://ypwskjjkwnchxwiordqd.supabase.co", "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inlwd3Nramprd25jaHh3aW9yZHFkIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODI3MTA0MzQsImV4cCI6MjA5ODI4NjQzNH0.0HKlBWg2O0WuOat2deWpB_9baFr7JGFTZcHzEga86Kw");
+  await _sb.auth.signOut();
+  window.location.replace("login.html");
+}
+</script>
+
+
+<header>
+  <div>
+    <h1>Flight Movement Totals Report</h1>
+    <p>Upload the daily movement XML · generates the Flights Summary Report in the exact template format</p>
+  </div>
+</header>
+
+<main>
+
+  <!-- ① Upload -->
+  <div class="section-title">① Upload Movement XML</div>
+  <div class="upload-card" id="dropzone">
+    <input type="file" id="xmlInput" accept=".xml" />
+    <div class="upload-icon">📂</div>
+    <h2>Drop the FS-FMR XML file here, or click to browse</h2>
+    <p>XY (Flynas) flights are separated automatically · all other airlines grouped as "Other Airlines"</p>
+    <div class="file-status" id="fileStatus"></div>
+  </div>
+
+  <!-- ② Preview -->
+  <div id="previewSection" style="display:none">
+    <div class="section-title">② Report Preview</div>
+
+    <div class="template-wrap">
+      <table class="tpl">
+        <!-- Title -->
+        <tr><td colspan="9" class="r-title">FLIGHTS SUMMARY REPORT</td></tr>
+        <!-- Date -->
+        <tr><td colspan="9" class="r-date" id="prev-date">—</td></tr>
+        <!-- spacer -->
+        <tr><td colspan="9" class="r-spacer"></td></tr>
+
+        <!-- Other Airlines section -->
+        <tr><td colspan="9" class="r-sec">Other Airlines</td></tr>
+        <tr><td colspan="9" class="r-spacer"></td></tr>
+        <tr>
+          <td colspan="3" class="r-subhdr">ARRIVAL</td>
+          <td colspan="3" class="r-spacer" style="background:white"></td>
+          <td colspan="3" class="r-subhdr">DEPARTURE</td>
+        </tr>
+        <tr><td colspan="9" class="r-spacer"></td></tr>
+        <tr class="r-val">
+          <td style="border:none; background:white"></td>
+          <td><span class="val-box" id="prev-oth-arr">—</span></td>
+          <td colspan="5" style="border:none; background:white"></td>
+          <td><span class="val-box" id="prev-oth-dep">—</span></td>
+          <td style="border:none; background:white"></td>
+        </tr>
+        <tr><td colspan="9" class="r-spacer"></td></tr>
+        <tr class="r-total">
+          <td colspan="3" style="border:none;background:white"></td>
+          <td><span class="total-box">TOTAL</span></td>
+          <td style="border:none;background:white"></td>
+          <td><span class="total-box" id="prev-oth-tot">—</span></td>
+          <td colspan="3" style="border:none;background:white"></td>
+        </tr>
+        <tr><td colspan="9" class="r-spacer"></td></tr>
+
+        <!-- Flynas section -->
+        <tr><td colspan="9" class="r-sec">Flynas</td></tr>
+        <tr><td colspan="9" class="r-spacer"></td></tr>
+        <tr>
+          <td colspan="3" class="r-subhdr">ARRIVAL</td>
+          <td colspan="3" class="r-spacer" style="background:white"></td>
+          <td colspan="3" class="r-subhdr">DEPARTURE</td>
+        </tr>
+        <tr><td colspan="9" class="r-spacer"></td></tr>
+        <tr class="r-val">
+          <td style="border:none;background:white"></td>
+          <td><span class="val-box" id="prev-xy-arr">—</span></td>
+          <td colspan="5" style="border:none;background:white"></td>
+          <td><span class="val-box" id="prev-xy-dep">—</span></td>
+          <td style="border:none;background:white"></td>
+        </tr>
+        <tr><td colspan="9" class="r-spacer"></td></tr>
+        <tr class="r-total">
+          <td colspan="3" style="border:none;background:white"></td>
+          <td><span class="total-box">TOTAL</span></td>
+          <td style="border:none;background:white"></td>
+          <td><span class="total-box" id="prev-xy-tot">—</span></td>
+          <td colspan="3" style="border:none;background:white"></td>
+        </tr>
+        <tr><td colspan="9" class="r-spacer"></td></tr>
+        <tr><td colspan="9" class="r-spacer"></td></tr>
+
+        <!-- Grand total -->
+        <tr class="r-grand">
+          <td colspan="4">TTL OAL &amp; Flynas Flights</td>
+          <td></td>
+          <td colspan="4" class="gv" id="prev-grand">—</td>
+        </tr>
+      </table>
+    </div>
+  </div>
+
+  <!-- ③ Generate -->
+  <div class="section-title">③ Generate Excel</div>
+  <div class="btn-wrap">
+    <button class="btn-gen" id="btnGen" disabled onclick="generateExcel()">
+      ⬇ Download Excel (TTL_FLT format)
+    </button>
+  </div>
+
+  <div id="log"></div>
+</main>
+
+<footer>Flight Movement Totals · runs entirely in your browser · no data uploaded anywhere</footer>
+
+<script>
+// ─────────────────────────────────────
+//  State
+// ─────────────────────────────────────
+let stats = {};
+
+// ─────────────────────────────────────
+//  Drag & drop
+// ─────────────────────────────────────
+const dz = document.getElementById('dropzone');
+dz.addEventListener('dragover',  e => { e.preventDefault(); dz.classList.add('drag'); });
+dz.addEventListener('dragleave', () => dz.classList.remove('drag'));
+dz.addEventListener('drop', e => {
+  e.preventDefault(); dz.classList.remove('drag');
+  if (e.dataTransfer.files[0]) processFile(e.dataTransfer.files[0]);
+});
+document.getElementById('xmlInput').addEventListener('change', e => {
+  if (e.target.files[0]) processFile(e.target.files[0]);
+});
+
+// ─────────────────────────────────────
+//  Parse
+// ─────────────────────────────────────
+function processFile(file) {
+  const st = document.getElementById('fileStatus');
+  st.className = 'file-status';
+  st.textContent = `Reading "${file.name}"…`;
+  stats = {};
+  document.getElementById('btnGen').disabled = true;
+  clearLog();
+  const reader = new FileReader();
+  reader.onload = e => {
+    try { parseXML(e.target.result); }
+    catch(err) {
+      st.className = 'file-status error';
+      st.textContent = '❌ ' + err.message;
+      logLine('Error: ' + err.message, 'err');
+    }
+  };
+  reader.readAsText(file);
+}
+
+function isEmpty(v) { return !v || v.trim() === '' || v.trim() === '00:00'; }
+
+function parseXML(text) {
+  const doc = (new DOMParser()).parseFromString(text, 'text/xml');
+  if (doc.querySelector('parsererror')) throw new Error('Invalid XML');
+
+  const details = Array.from(doc.getElementsByTagNameNS('*', 'Detail'));
+  logLine(`Loaded ${details.length} flight rows`, 'info');
+
+  // Exclude SV, F3, RX and any Technical (OperationType1) flights
+  const EXCLUDED_AIRLINES = new Set(['SV', 'F3', 'RX']);
+  const eligible = details.filter(d => {
+    const airline = (d.getAttribute('AirlineCode')||'').trim().toUpperCase();
+    const opType1 = (d.getAttribute('OperationType1')||'').trim().toUpperCase();
+    return !EXCLUDED_AIRLINES.has(airline) && opType1 !== 'TECHNICAL';
+  });
+
+  logLine(`Total rows: ${details.length} · excluded: ${details.length - eligible.length} (SV/F3/RX + Technical) · eligible: ${eligible.length}`, 'info');
+
+  const xy  = eligible.filter(d => (d.getAttribute('AirlineCode')||'').trim().toUpperCase() === 'XY');
+  const oth = eligible.filter(d => (d.getAttribute('AirlineCode')||'').trim().toUpperCase() !== 'XY');
+
+  const xyArr  = xy.filter(d  => !isEmpty(d.getAttribute('ATA'))).length;
+  const xyDep  = xy.filter(d  => !isEmpty(d.getAttribute('ATD'))).length;
+  const othArr = oth.filter(d => !isEmpty(d.getAttribute('ATA'))).length;
+  const othDep = oth.filter(d => !isEmpty(d.getAttribute('ATD'))).length;
+
+  // Date: take SDA from first row, parse to Date object
+  const sdaRaw = details[0] ? details[0].getAttribute('SDA') || '' : '';
+  let reportDate = sdaRaw; // keep raw string for display
+  // Try to get a proper date object for Excel serialisation
+  let dateObj = null;
+  if (sdaRaw) {
+    // format "M/D/YYYY"
+    const parts = sdaRaw.split('/');
+    if (parts.length === 3) {
+      dateObj = new Date(parseInt(parts[2]), parseInt(parts[0])-1, parseInt(parts[1]));
+    }
+  }
+
+  stats = { xyArr, xyDep, othArr, othDep, reportDate, dateObj };
+
+  logLine(`Other Airlines  → arrivals: ${othArr}  departures: ${othDep}  total: ${othArr+othDep}`, 'ok');
+  logLine(`Flynas (XY)     → arrivals: ${xyArr}  departures: ${xyDep}  total: ${xyArr+xyDep}`, 'ok');
+  logLine(`Grand Total: ${othArr+othDep+xyArr+xyDep}`, 'ok');
+
+  updatePreview();
+  document.getElementById('fileStatus').textContent =
+    `✅ ${details.length} flights · date: ${reportDate}`;
+  document.getElementById('btnGen').disabled = false;
+}
+
+function updatePreview() {
+  const { xyArr, xyDep, othArr, othDep, reportDate } = stats;
+  document.getElementById('prev-date').textContent    = reportDate;
+  document.getElementById('prev-oth-arr').textContent = othArr;
+  document.getElementById('prev-oth-dep').textContent = othDep;
+  document.getElementById('prev-oth-tot').textContent = othArr + othDep;
+  document.getElementById('prev-xy-arr').textContent  = xyArr;
+  document.getElementById('prev-xy-dep').textContent  = xyDep;
+  document.getElementById('prev-xy-tot').textContent  = xyArr + xyDep;
+  document.getElementById('prev-grand').textContent   = othArr + othDep + xyArr + xyDep;
+  document.getElementById('previewSection').style.display = 'block';
+}
+
+// ─────────────────────────────────────
+//  Excel generation — exact TTL_FLT template
+// ─────────────────────────────────────
+function generateExcel() {
+  const { xyArr, xyDep, othArr, othDep, reportDate, dateObj } = stats;
+
+  const wb = XLSX.utils.book_new();
+  const ws = {};
+
+  // ── Colors ──
+  const WHITE        = 'FFFFFFFF';
+  const GREEN_FILL   = 'FFE2EEDA';
+  const ORANGE_FILL  = 'FFFBE5D5';
+  const RED_FONT     = 'FFC00000';
+
+  // ── Style builders ──
+  function font(bold, sz, color, underline) {
+    const f = { name: 'Calibri', sz: sz||11 };
+    if (bold)      f.bold = true;
+    if (underline) f.underline = true;
+    if (color)     f.color = { rgb: color };
+    return f;
+  }
+  function fill(rgb) {
+    return { patternType: 'solid', fgColor: { rgb } };
+  }
+  function align(h, v) {
+    return { horizontal: h||'center', vertical: v||'center' };
+  }
+  const THIN = { style: 'thin' };
+  const NO   = {};
+  function bdr(l, r, t, b) {
+    return {
+      left:   l ? THIN : NO, right:  r ? THIN : NO,
+      top:    t ? THIN : NO, bottom: b ? THIN : NO
+    };
+  }
+
+  // ── Helper to set a cell ──
+  function sc(addr, value, s) {
+    if (value === null || value === undefined) {
+      ws[addr] = { v: '', t: 's', s };
+    } else if (typeof value === 'number') {
+      ws[addr] = { v: value, t: 'n', s };
+    } else if (value instanceof Date) {
+      ws[addr] = { v: value, t: 'd', z: 'DD/MM/YYYY', s };
+    } else if (typeof value === 'string' && value.startsWith('=')) {
+      ws[addr] = { f: value.slice(1), t: 'n', s };
+    } else {
+      ws[addr] = { v: value, t: 's', s };
+    }
+  }
+
+  // ── Merged cell ranges ──
+  ws['!merges'] = [
+    { s:{r:0,c:0}, e:{r:1,c:8} },   // A1:I2  title
+    { s:{r:2,c:0}, e:{r:3,c:8} },   // A3:I4  date
+    { s:{r:5,c:0}, e:{r:6,c:8} },   // A6:I7  Other Airlines
+    { s:{r:8,c:0}, e:{r:8,c:2} },   // A9:C9  ARRIVAL
+    { s:{r:8,c:6}, e:{r:8,c:8} },   // G9:I9  DEPARTURE
+    { s:{r:14,c:0},e:{r:15,c:8} },  // A15:I16 Flynas
+    { s:{r:17,c:0},e:{r:17,c:2} },  // A18:C18 ARRIVAL
+    { s:{r:17,c:6},e:{r:17,c:8} },  // G18:I18 DEPARTURE
+    { s:{r:25,c:0},e:{r:26,c:3} },  // A26:D27 grand label
+    { s:{r:25,c:4},e:{r:26,c:4} },  // E26:E27 spacer
+    { s:{r:25,c:5},e:{r:26,c:8} },  // F26:I27 grand value
+  ];
+
+  // ─── ROW 1-2: Title ───
+  sc('A1', 'FLIGHTS SUMMARY REPORT ', {
+    font: font(true, 18), fill: fill(WHITE),
+    alignment: align(), border: bdr(1,1,1,1)
+  });
+
+  // ─── ROW 3-4: Date ───
+  const dateVal = dateObj || reportDate;
+  sc('A3', dateObj || reportDate, {
+    font: font(false, 18, RED_FONT), fill: fill(WHITE),
+    alignment: align(), border: bdr(1,1,1,1),
+    numFmt: 'DD/MM/YYYY'
+  });
+  if (dateObj) ws['A3'].z = 'DD/MM/YYYY';
+
+  // ─── ROW 5: spacer with bottom border ───
+  for (let c = 0; c < 9; c++) {
+    const addr = XLSX.utils.encode_cell({r:4, c});
+    sc(addr, null, {
+      fill: fill(WHITE),
+      border: { left: c===0?THIN:NO, right: c===8?THIN:NO, top:NO, bottom:THIN }
+    });
+  }
+
+  // ─── ROW 6-7: Other Airlines ───
+  sc('A6', 'Other Airlines', {
+    font: font(true, 16), fill: fill(GREEN_FILL),
+    alignment: align(), border: bdr(1,1,1,1)
+  });
+
+  // ─── ROW 8: spacer ───
+  sc('A8', null, { fill:fill(WHITE), border: bdr(1,0,0,0) });
+  sc('I8', null, { fill:fill(WHITE), border: bdr(0,1,0,0) });
+
+  // ─── ROW 9: ARRIVAL | gap | DEPARTURE ───
+  sc('A9', 'ARRIVAL', {
+    font: font(true, 11, RED_FONT, true), fill: fill(ORANGE_FILL),
+    alignment: align(), border: bdr(1,1,1,1)
+  });
+  for (let c = 3; c <= 5; c++) {
+    const addr = XLSX.utils.encode_cell({r:8, c});
+    sc(addr, null, { fill:fill(WHITE), border: bdr(0,0,1,1) });
+  }
+  sc('G9', 'DEPARTURE', {
+    font: font(true, 11, RED_FONT, true), fill: fill(ORANGE_FILL),
+    alignment: align(), border: bdr(1,1,1,1)
+  });
+
+  // ─── ROW 10: spacer ───
+  sc('A10', null, { fill:fill(WHITE), border: bdr(1,0,0,0) });
+  sc('I10', null, { fill:fill(WHITE), border: bdr(0,1,0,0) });
+
+  // ─── ROW 11: Other Airlines values ───
+  sc('A11', null, { fill:fill(WHITE), border: bdr(1,0,0,0) });
+  sc('B11', othArr, {
+    font: font(false,11), fill:fill(WHITE), alignment:align(), border:bdr(1,1,1,1)
+  });
+  sc('H11', othDep, {
+    font: font(false,11), fill:fill(WHITE), alignment:align(), border:bdr(1,1,1,1)
+  });
+  sc('I11', null, { fill:fill(WHITE), border: bdr(0,1,0,0) });
+
+  // ─── ROW 12: spacer ───
+  sc('A12', null, { fill:fill(WHITE), border: bdr(1,0,0,0) });
+  sc('I12', null, { fill:fill(WHITE), border: bdr(0,1,0,0) });
+
+  // ─── ROW 13: Other Airlines TOTAL ───
+  sc('A13', null, { fill:fill(WHITE), border: bdr(1,0,0,0) });
+  sc('D13', 'TOTAL', {
+    font: font(true,11,RED_FONT), fill:fill(WHITE), alignment:align(), border:bdr(1,1,1,1)
+  });
+  sc('F13', '=SUM(B11,H11)', {
+    font: font(true,11,RED_FONT), fill:fill(WHITE), alignment:align(), border:bdr(1,1,1,1)
+  });
+  sc('I13', null, { fill:fill(WHITE), border: bdr(0,1,0,0) });
+
+  // ─── ROW 14: spacer ───
+  sc('A14', null, { fill:fill(WHITE), border: bdr(1,0,0,0) });
+  sc('I14', null, { fill:fill(WHITE), border: bdr(0,1,0,0) });
+
+  // ─── ROW 15-16: Flynas ───
+  sc('A15', 'Flynas', {
+    font: font(true,16), fill:fill(GREEN_FILL),
+    alignment:align(), border:bdr(1,1,1,1)
+  });
+
+  // ─── ROW 17: spacer ───
+  sc('A17', null, { fill:fill(WHITE), border: bdr(1,0,0,0) });
+  sc('I17', null, { fill:fill(WHITE), border: bdr(0,1,0,0) });
+
+  // ─── ROW 18: ARRIVAL | gap | DEPARTURE ───
+  sc('A18', 'ARRIVAL', {
+    font: font(true,11,RED_FONT,true), fill:fill(ORANGE_FILL),
+    alignment:align(), border:bdr(1,1,1,1)
+  });
+  for (let c = 3; c <= 5; c++) {
+    const addr = XLSX.utils.encode_cell({r:17, c});
+    sc(addr, null, { fill:fill(WHITE), border: bdr(0,0,1,1) });
+  }
+  sc('G18', 'DEPARTURE', {
+    font: font(true,11,RED_FONT,true), fill:fill(ORANGE_FILL),
+    alignment:align(), border:bdr(1,1,1,1)
+  });
+
+  // ─── ROW 19: header sub-spacer ───
+  sc('A19', null, { fill:fill(WHITE), border: bdr(1,0,1,0) });
+  for (let c = 1; c <= 4; c++) {
+    const addr = XLSX.utils.encode_cell({r:18, c});
+    if (!ws[addr]) sc(addr, null, { fill:fill(WHITE) });
+  }
+  sc('I19', null, { fill:fill(WHITE), border: bdr(0,1,1,0) });
+
+  // ─── ROW 20: spacer ───
+  sc('A20', null, { fill:fill(WHITE), border: bdr(1,0,0,0) });
+  sc('I20', null, { fill:fill(WHITE), border: bdr(0,1,0,0) });
+
+  // ─── ROW 21: Flynas values ───
+  sc('A21', null, { fill:fill(WHITE), border: bdr(1,0,0,0) });
+  sc('B21', xyArr, {
+    font:font(false,11), fill:fill(WHITE), alignment:align(), border:bdr(1,1,1,1)
+  });
+  sc('H21', xyDep, {
+    font:font(false,11), fill:fill(WHITE), alignment:align(), border:bdr(1,1,1,1)
+  });
+  sc('I21', null, { fill:fill(WHITE), border: bdr(0,1,0,0) });
+
+  // ─── ROW 22: spacer ───
+  sc('A22', null, { fill:fill(WHITE), border: bdr(1,0,0,0) });
+  sc('I22', null, { fill:fill(WHITE), border: bdr(0,1,0,0) });
+
+  // ─── ROW 23: Flynas TOTAL ───
+  sc('A23', null, { fill:fill(WHITE), border: bdr(1,0,0,0) });
+  sc('D23', 'TOTAL', {
+    font:font(true,11,RED_FONT), fill:fill(WHITE), alignment:align(), border:bdr(1,1,1,1)
+  });
+  sc('F23', '=SUM(B21,H21)', {
+    font:font(true,11,RED_FONT), fill:fill(WHITE), alignment:align(), border:bdr(1,1,1,1)
+  });
+  sc('I23', null, { fill:fill(WHITE), border: bdr(0,1,0,0) });
+
+  // ─── ROW 24-25: spacers ───
+  for (let r = 23; r <= 24; r++) {
+    sc(XLSX.utils.encode_cell({r, c:0}), null, { fill:fill(WHITE), border: bdr(1,0,0,0) });
+    sc(XLSX.utils.encode_cell({r, c:8}), null, { fill:fill(WHITE), border: bdr(0,1,0,0) });
+  }
+
+  // ─── ROW 26-27: Grand Total ───
+  sc('A26', 'TTL OAL & Flynas Flights ', {
+    font:font(true,12), fill:fill(GREEN_FILL), alignment:align(), border:bdr(1,1,1,1)
+  });
+  sc('E26', null, { fill:fill(GREEN_FILL), border:bdr(1,1,0,0) });
+  sc('F26', '=SUM(F13,F23)', {
+    font:font(true,16,RED_FONT), fill:fill(GREEN_FILL), alignment:align(), border:bdr(1,1,1,1)
+  });
+
+  // ─── ROW 28: bottom border ───
+  sc('A28', null, { fill:fill(WHITE), border: bdr(1,0,0,0) });
+  sc('I28', null, { fill:fill(WHITE), border: bdr(0,1,0,0) });
+
+  // ── Sheet dimensions ──
+  ws['!ref'] = 'A1:I28';
+
+  // ── Column widths ──
+  ws['!cols'] = [
+    {wch:9.14}, {wch:10}, {wch:10}, {wch:10}, {wch:10},
+    {wch:12},   {wch:10}, {wch:10}, {wch:10}
+  ];
+
+  // ── Row heights ──
+  ws['!rows'] = [];
+  const rh = {0:15,1:15,2:15,3:15,4:15,5:15,6:15,8:15,14:15,15:15,25:21,26:15};
+  for (let i = 0; i <= 27; i++) {
+    ws['!rows'][i] = rh[i] ? { hpt: rh[i] } : { hpt: 15 };
+  }
+
+  XLSX.utils.book_append_sheet(wb, ws, 'Sheet1');
+
+  const safeDate = (stats.reportDate||'report').replace(/[\/\\:]/g, '-');
+  XLSX.writeFile(wb, `TTL_FLT_${safeDate}.xlsx`, { bookType: 'xlsx', cellStyles: true });
+  logLine(`Downloaded TTL_FLT_${safeDate}.xlsx ✅`, 'ok');
+}
+
+// ─────────────────────────────────────
+//  Log
+// ─────────────────────────────────────
+function logLine(msg, type) {
+  const el = document.getElementById('log');
+  el.classList.add('visible');
+  const d = document.createElement('div');
+  d.className = type==='ok' ? 'log-ok' : type==='err' ? 'log-err' : 'log-info';
+  d.textContent = `[${new Date().toLocaleTimeString()}] ${msg}`;
+  el.appendChild(d);
+  el.scrollTop = el.scrollHeight;
+}
+function clearLog() {
+  const el = document.getElementById('log');
+  el.innerHTML = '';
+  el.classList.remove('visible');
+}
+</script>
+</body>
+</html>
